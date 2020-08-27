@@ -1,0 +1,20 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/MyWebServer/main.cpp
+iostream
+-
+csignal
+-
+fcntl.h
+-
+sys/stat.h
+-
+unistd.h
+-
+
