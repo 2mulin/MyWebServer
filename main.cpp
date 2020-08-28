@@ -2,6 +2,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include "useEpoll.h"
+#include "requestData.h"
 using namespace std;
 
 // 改变对SIGPIPE信号的处理为忽视
@@ -13,7 +14,7 @@ void handlerForSIGPIPE() {
         return;
 }
 
-// 设置socket为非阻塞
+// 设置fd为非阻塞
 int setSocketNonBlocking(int fd) {
     // 得到已打开文件fd的状态标志
     int flags = fcntl(fd, F_GETFL);
@@ -27,9 +28,13 @@ int setSocketNonBlocking(int fd) {
     return 0;
 }
 
+// readn
+
+// writen
+
 int main(int argc, char *argv[]) {
     handlerForSIGPIPE();
-    int epoll_fd = epollInit();
+    int epoll_fd = epoll_init();
 
     return 0;
 }

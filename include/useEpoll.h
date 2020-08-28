@@ -5,15 +5,18 @@
 ***********************************************************/
 #ifndef WEBSERVER_USEEPOLL_H
 #define WEBSERVER_USEEPOLL_H
-#include "requestData.h"
+
+#include <sys/epoll.h>
+#include <cerrno>
+#include <cstdio>// perror头文件
 
 const int MAXEVENTS = 5000;
 const int LISTENQ = 1024;//监听队列
 
 int epoll_init();
-int epoll_add(int epoll_fd,int fd,void* request,__uint32_t events);
-int epoll_mod(int epoll_fd,int fd,void* request,__uint32_t events);
-int epoll_del(int epoll_fd,int fd,void* request,__uint32_t events);
+int epoll_add(int epoll_fd,int fd,void* request,uint32_t events);
+int epoll_mod(int epoll_fd,int fd,void* request,uint32_t events);
+int epoll_del(int epoll_fd,int fd,void* request,uint32_t events);
 
 
 #endif //WEBSERVER_USEEPOLL_H
