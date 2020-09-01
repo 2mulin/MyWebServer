@@ -11,6 +11,44 @@
 #include <unordered_map>
 #include <queue>
 #include <iostream>
+#include <unistd.h>
+#include <cstdio>
+#include <useEpoll.h>
+#include "util.h"
+
+// 解析request的状态
+const int STATE_PARSE_URI = 1;
+const int STATE_PARSE_HEADERS = 2;
+const int STATE_RECV_BODY = 3;
+const int STATE_ANALYSIS = 4;
+const int STATE_FINISH = 5;
+
+const int MAX_BUFF = 4096;
+
+// 有请求出现但是读不到数据,可能是Request Aborted,
+// 或者来自网络的数据没有达到等原因,
+// 对这样的请求尝试超过一定的次数就抛弃
+const int AGAIN_MAX_TIMES = 200;
+
+// 解析request URI的状态
+const int PARSE_URI_AGAIN = -1;
+const int PARSE_URI_ERROR = -2;
+const int PARSE_URI_SUCCESS = 0;
+
+// 解析request header的状态
+const int PARSE_HEADER_AGAIN = -1;
+const int PARSE_HEADER_ERROR = -2;
+const int PARSE_HEADER_SUCCESS = 0;
+
+const int ANALYSIS_ERROR = -2;
+const int ANALYSIS_SUCCESS = 0;
+
+const int METHOD_POST = 1;
+const int METHOD_GET = 2;
+const int HTTP_10 = 1;
+const int HTTP_11 = 2;
+
+const int EPOLL_WAIT_TIME = 500;
 
 using namespace std;
 
@@ -52,11 +90,11 @@ private:
     int againTime;
     std::string path;
     int fd;
-    int epoll_fd;
-    std::string content;
+    int epoll_fd;// epoll实例
+    std::string content;// http请求的主体部分
     int method;
     int HTTPversion;
-    std::string fileName;
+    std::string file_name;
     int now_read_pos;
     int state;
     int h_state;
@@ -79,13 +117,21 @@ public:
 
     ~requestData();
 
-    void addTimer(mytimer *timer);
+    void addTimer(mytimer *mtimer);
+
+    int getFd() const
+    {
+        return fd;
+    }
+
+    void setFd(int _fd)
+    {
+        fd = _fd;
+    }
 
     void reset();
 
     void separateTimer();
-
-    int getFd();
 
     void handleRequest();
 

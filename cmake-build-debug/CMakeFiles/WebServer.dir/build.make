@@ -75,9 +75,32 @@ CMakeFiles/WebServer.dir/main.cpp.o.provides: CMakeFiles/WebServer.dir/main.cpp.
 
 CMakeFiles/WebServer.dir/main.cpp.o.provides.build: CMakeFiles/WebServer.dir/main.cpp.o
 
+CMakeFiles/WebServer.dir/src/util.cpp.o: CMakeFiles/WebServer.dir/flags.make
+CMakeFiles/WebServer.dir/src/util.cpp.o: ../src/util.cpp
+	$(CMAKE_COMMAND) -E cmake_progress_report /home/MyWebServer/cmake-build-debug/CMakeFiles $(CMAKE_PROGRESS_2)
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Building CXX object CMakeFiles/WebServer.dir/src/util.cpp.o"
+	/usr/bin/g++   $(CXX_DEFINES) $(CXX_FLAGS) -o CMakeFiles/WebServer.dir/src/util.cpp.o -c /home/MyWebServer/src/util.cpp
+
+CMakeFiles/WebServer.dir/src/util.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/WebServer.dir/src/util.cpp.i"
+	/usr/bin/g++  $(CXX_DEFINES) $(CXX_FLAGS) -E /home/MyWebServer/src/util.cpp > CMakeFiles/WebServer.dir/src/util.cpp.i
+
+CMakeFiles/WebServer.dir/src/util.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/WebServer.dir/src/util.cpp.s"
+	/usr/bin/g++  $(CXX_DEFINES) $(CXX_FLAGS) -S /home/MyWebServer/src/util.cpp -o CMakeFiles/WebServer.dir/src/util.cpp.s
+
+CMakeFiles/WebServer.dir/src/util.cpp.o.requires:
+.PHONY : CMakeFiles/WebServer.dir/src/util.cpp.o.requires
+
+CMakeFiles/WebServer.dir/src/util.cpp.o.provides: CMakeFiles/WebServer.dir/src/util.cpp.o.requires
+	$(MAKE) -f CMakeFiles/WebServer.dir/build.make CMakeFiles/WebServer.dir/src/util.cpp.o.provides.build
+.PHONY : CMakeFiles/WebServer.dir/src/util.cpp.o.provides
+
+CMakeFiles/WebServer.dir/src/util.cpp.o.provides.build: CMakeFiles/WebServer.dir/src/util.cpp.o
+
 CMakeFiles/WebServer.dir/src/useEpoll.cpp.o: CMakeFiles/WebServer.dir/flags.make
 CMakeFiles/WebServer.dir/src/useEpoll.cpp.o: ../src/useEpoll.cpp
-	$(CMAKE_COMMAND) -E cmake_progress_report /home/MyWebServer/cmake-build-debug/CMakeFiles $(CMAKE_PROGRESS_2)
+	$(CMAKE_COMMAND) -E cmake_progress_report /home/MyWebServer/cmake-build-debug/CMakeFiles $(CMAKE_PROGRESS_3)
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Building CXX object CMakeFiles/WebServer.dir/src/useEpoll.cpp.o"
 	/usr/bin/g++   $(CXX_DEFINES) $(CXX_FLAGS) -o CMakeFiles/WebServer.dir/src/useEpoll.cpp.o -c /home/MyWebServer/src/useEpoll.cpp
 
@@ -100,7 +123,7 @@ CMakeFiles/WebServer.dir/src/useEpoll.cpp.o.provides.build: CMakeFiles/WebServer
 
 CMakeFiles/WebServer.dir/src/requestData.cpp.o: CMakeFiles/WebServer.dir/flags.make
 CMakeFiles/WebServer.dir/src/requestData.cpp.o: ../src/requestData.cpp
-	$(CMAKE_COMMAND) -E cmake_progress_report /home/MyWebServer/cmake-build-debug/CMakeFiles $(CMAKE_PROGRESS_3)
+	$(CMAKE_COMMAND) -E cmake_progress_report /home/MyWebServer/cmake-build-debug/CMakeFiles $(CMAKE_PROGRESS_4)
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Building CXX object CMakeFiles/WebServer.dir/src/requestData.cpp.o"
 	/usr/bin/g++   $(CXX_DEFINES) $(CXX_FLAGS) -o CMakeFiles/WebServer.dir/src/requestData.cpp.o -c /home/MyWebServer/src/requestData.cpp
 
@@ -124,6 +147,7 @@ CMakeFiles/WebServer.dir/src/requestData.cpp.o.provides.build: CMakeFiles/WebSer
 # Object files for target WebServer
 WebServer_OBJECTS = \
 "CMakeFiles/WebServer.dir/main.cpp.o" \
+"CMakeFiles/WebServer.dir/src/util.cpp.o" \
 "CMakeFiles/WebServer.dir/src/useEpoll.cpp.o" \
 "CMakeFiles/WebServer.dir/src/requestData.cpp.o"
 
@@ -131,6 +155,7 @@ WebServer_OBJECTS = \
 WebServer_EXTERNAL_OBJECTS =
 
 WebServer: CMakeFiles/WebServer.dir/main.cpp.o
+WebServer: CMakeFiles/WebServer.dir/src/util.cpp.o
 WebServer: CMakeFiles/WebServer.dir/src/useEpoll.cpp.o
 WebServer: CMakeFiles/WebServer.dir/src/requestData.cpp.o
 WebServer: CMakeFiles/WebServer.dir/build.make
@@ -143,6 +168,7 @@ CMakeFiles/WebServer.dir/build: WebServer
 .PHONY : CMakeFiles/WebServer.dir/build
 
 CMakeFiles/WebServer.dir/requires: CMakeFiles/WebServer.dir/main.cpp.o.requires
+CMakeFiles/WebServer.dir/requires: CMakeFiles/WebServer.dir/src/util.cpp.o.requires
 CMakeFiles/WebServer.dir/requires: CMakeFiles/WebServer.dir/src/useEpoll.cpp.o.requires
 CMakeFiles/WebServer.dir/requires: CMakeFiles/WebServer.dir/src/requestData.cpp.o.requires
 .PHONY : CMakeFiles/WebServer.dir/requires

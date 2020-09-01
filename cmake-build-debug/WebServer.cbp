@@ -78,6 +78,8 @@
       </Unit>
       <Unit filename="/home/MyWebServer/src/useEpoll.cpp">
       </Unit>
+      <Unit filename="/home/MyWebServer/src/util.cpp">
+      </Unit>
       <Unit filename="/home/MyWebServer/CMakeLists.txt">
           <Option virtualFolder="CMake Files\" />
       </Unit>
