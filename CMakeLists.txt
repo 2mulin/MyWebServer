@@ -6,10 +6,10 @@ project(WebServer)
 
 # 添加编译选项
 add_compile_options(
-        "-std=c++11"
+        "-std=c++11"            # 指定支持的C++标准
         "-g3"
-        "-Wall"
-        "-Wextra"
+        "-Wall"                 # 生成所有警告信息
+        "-Wextra"               #
 )
 
 # 将给定的路径添加到编译器搜索包含文件（.h文件）的路径列表中。
