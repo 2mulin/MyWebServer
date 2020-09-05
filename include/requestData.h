@@ -154,32 +154,47 @@ public:
     void handleError(int fd, int err_num, std::string short_msg);
 };
 
+// 计时器
 struct mytimer
 {
     bool deleted;
-    size_t expired_time;
+    size_t expired_time;// 到期时间
     requestData *request_data;
 
     mytimer(requestData *_request_data, int timeout);
 
     ~mytimer();
 
+    // 更新（加长）expired_time
     void update(int timeout);
 
+    // 判断当前是否过期
     bool isValid();
 
     void clearReq();
 
-    void setDeleted();
+    void setDeleted()
+    {
+        deleted = true;
+    }
 
-    bool isDeleted() const;
+    bool isDeleted() const
+    {
+        return deleted;
+    }
 
-    size_t getExptime() const;// 到期时间
+    size_t getExptime() const
+    {
+        return expired_time;
+    }
 };
 
 struct timeCmp
 {
-    bool operator()(const mytimer *a, const mytimer *b) const;
+    bool operator()(const mytimer *a, const mytimer *b) const
+    {
+        return a->getExptime() > b->getExptime();
+    }
 };
 
 #endif //WEBSERVER_REQUESTDATA_H

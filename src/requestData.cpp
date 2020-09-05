@@ -564,19 +564,53 @@ void requestData::handleError(int fd, int err_num, std::string short_msg)
     writen(fd, send_buf, strlen(send_buf));// 写入header
     sprintf(send_buf, "%s", body_buff.c_str());
     writen(fd, send_buf,strlen(send_buf));// 写入body
-    return;
 }
 
 // mytimer类的实现
 
 mytimer::mytimer(requestData *_request_data, int timeout)
+    :deleted(false), request_data(_request_data)
 {
     struct timeval now;
-    gettimeofday(&now,NULL);// 获得系统时间
-    expired_time
+    gettimeofday(&now, nullptr);// 返回日历时间到now中
+    // expired_time 表示的毫秒
+    expired_time = ((now.tv_sec * 1000) + (now.tv_usec / 1000)) + timeout;
 }
 
 mytimer::~mytimer()
 {
+    cout << "~mytimer()" << endl;
+    if(request_data != nullptr)
+    {
+        cout << "request_data=" << request_data << endl;
+        delete request_data;
+        request_data = nullptr;
+    }
+}
 
+void mytimer::update(int timeout)
+{
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+    expired_time = ((now.tv_sec * 1000) + (now.tv_usec / 1000)) + timeout;
+}
+
+bool mytimer::isValid()
+{
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+    size_t temp = (now.tv_sec * 1000 + now.tv_usec / 1000);
+    if(temp < expired_time)
+        return true;
+        else
+    {
+        this->setDeleted();
+        return false;
+    }
+}
+
+void mytimer::clearReq()
+{
+    delete request_data;
+    this->setDeleted();
 }
