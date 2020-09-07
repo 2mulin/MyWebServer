@@ -162,6 +162,30 @@ src/requestData.cpp.s:
 	$(MAKE) -f CMakeFiles/WebServer.dir/build.make CMakeFiles/WebServer.dir/src/requestData.cpp.s
 .PHONY : src/requestData.cpp.s
 
+src/threadpool.o: src/threadpool.cpp.o
+.PHONY : src/threadpool.o
+
+# target to build an object file
+src/threadpool.cpp.o:
+	$(MAKE) -f CMakeFiles/WebServer.dir/build.make CMakeFiles/WebServer.dir/src/threadpool.cpp.o
+.PHONY : src/threadpool.cpp.o
+
+src/threadpool.i: src/threadpool.cpp.i
+.PHONY : src/threadpool.i
+
+# target to preprocess a source file
+src/threadpool.cpp.i:
+	$(MAKE) -f CMakeFiles/WebServer.dir/build.make CMakeFiles/WebServer.dir/src/threadpool.cpp.i
+.PHONY : src/threadpool.cpp.i
+
+src/threadpool.s: src/threadpool.cpp.s
+.PHONY : src/threadpool.s
+
+# target to generate assembly for a file
+src/threadpool.cpp.s:
+	$(MAKE) -f CMakeFiles/WebServer.dir/build.make CMakeFiles/WebServer.dir/src/threadpool.cpp.s
+.PHONY : src/threadpool.cpp.s
+
 src/useEpoll.o: src/useEpoll.cpp.o
 .PHONY : src/useEpoll.o
 
@@ -225,6 +249,9 @@ help:
 	@echo "... src/requestData.o"
 	@echo "... src/requestData.i"
 	@echo "... src/requestData.s"
+	@echo "... src/threadpool.o"
+	@echo "... src/threadpool.i"
+	@echo "... src/threadpool.s"
 	@echo "... src/useEpoll.o"
 	@echo "... src/useEpoll.i"
 	@echo "... src/useEpoll.s"
