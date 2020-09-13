@@ -10,6 +10,7 @@ add_compile_options(
         "-g3"
         "-Wall"                 # 生成所有警告信息
         "-Wextra"               #
+        "-pthread"              # 线程支持
 )
 
 # 将给定的路径添加到编译器搜索包含文件（.h文件）的路径列表中。
