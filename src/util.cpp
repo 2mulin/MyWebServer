@@ -7,7 +7,7 @@
 
 void handlerForSIGPIPE()
 {
-    struct sigaction sa{};
+    struct sigaction sa;
     sa.sa_flags = 0;
     sa.sa_handler = SIG_IGN;// 忽视
     if (sigaction(SIGPIPE, &sa, nullptr))

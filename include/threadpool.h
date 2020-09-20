@@ -62,13 +62,13 @@ struct threadpool_t
 threadpool_t* threadpool_create(int thread_count, int queue_size, int flags);
 // 往线程池中增加一个任务
 int threadpool_add(threadpool_t *pool, void (*function)(void*), void* argument, int flags);
-// 摧毁线程池
+// join所有线程
 int threadpool_destory(threadpool_t *pool, int flags);
-// 释放线程池
+// 释放线程池的内存
 int threadpool_free(threadpool_t *pool);
 
-// 被pthread_create创建的线程
-static void *threadpool_thread(void *threadpool);
+// 静态函数的作用域被限制在本文件内，所以这里不需要声明
+// static void *threadpool_thread(void *threadpool);
 
 
 #endif //WEBSERVER_THREADPOOL_H

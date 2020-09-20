@@ -6,24 +6,25 @@
 ***********************************************************/
 #include "useEpoll.h"
 
-struct epoll_event *ev;
+// epoll_event类型的一个数组，在创建一个epoll实例时初始化
+struct epoll_event *events = nullptr;
 
-// 创建一个epoll实例，返回epoll实例的fd
+// 创建一个epoll实例，返回epoll实例
 int epoll_init() {
-    int epoll_fd = epoll_create(LISTENQ + 1);// 传size参数好像没什么用了
+    int epoll_fd = epoll_create(LISTENQ + 1);// size参数并不是一个上限，只是告诉内核可能是size个连接，准备好大小足够的数据结构
     if (epoll_fd == -1)
         return -1;
-    ev = new struct epoll_event[MAXEVENTS];// ev指针初始化
+    events = new struct epoll_event[MAXEVENTS];// events指针初始化
     return epoll_fd;
 }
 
-// 将fd添加到epoll_fd
+// 将fd添加到epoll_fd实例的interest列表中
 int epoll_add(int epoll_fd, int fd, void *request, uint32_t events) {
-    struct epoll_event event{};
-    event.events = events;
-    event.data.ptr = request;
+    struct epoll_event ev;
+    ev.events = events;
+    ev.data.ptr = request;
 
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1) {
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
         perror("epoll_add failed");
         return -1;
     }
@@ -32,7 +33,7 @@ int epoll_add(int epoll_fd, int fd, void *request, uint32_t events) {
 
 // 修改fd状态
 int epoll_mod(int epoll_fd, int fd, void *request, uint32_t events) {
-    struct epoll_event event{};
+    struct epoll_event event;
     event.events = events;
     event.data.ptr = request;
 
@@ -45,7 +46,7 @@ int epoll_mod(int epoll_fd, int fd, void *request, uint32_t events) {
 
 // 从epoll实例中移除fd
 int epoll_del(int epoll_fd, int fd, void *request, uint32_t events) {
-    struct epoll_event event{};
+    struct epoll_event event;
     event.events = events;
     event.data.ptr = request;
 
@@ -54,4 +55,15 @@ int epoll_del(int epoll_fd, int fd, void *request, uint32_t events) {
         return -1;
     }
     return 0;
+}
+
+// 返回活跃事件数，返回epoll_event结构体变量放到events数组中。
+int my_epoll_wait(int epoll_fd, struct epoll_event* events, int max_events, int timeout)
+{
+    int ret_count = epoll_wait(epoll_fd,events,max_events,timeout);
+    if(ret_count < 0)
+    {
+        perror("epoll wait error");
+    }
+    return ret_count;
 }

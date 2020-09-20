@@ -6,6 +6,50 @@
 
 #include "threadpool.h"
 
+// 创建的线程
+static void *threadpool_thread(void *threadpool)
+{
+    threadpool_t *pool = (threadpool_t *)threadpool;
+    threadpool_task_t task;
+
+    for(;;)
+    {
+        // 必须锁定才能执行 pthread_cond_wait()
+        pthread_mutex_lock(&(pool->lock));
+
+        // 等待条件变量，检查是否有虚假唤醒。当从pthread_cond_wait()返回时，我们拥有锁。
+        while((pool->count == 0) && (!pool->shutdown))
+        {// 若是pool->count > 0说明等到了
+            pthread_cond_wait(&pool->notify, &pool->lock);
+        }
+        if((pool->shutdown == immediate_shutdown) ||
+           ((pool->shutdown == graceful_shutdown) &&
+            (pool->count == 0)))
+        {
+            break;
+        }
+
+        task.function = pool->queue[pool->head].function;
+        task.argument = pool->queue[pool->head].argument;
+        pool->head = (pool->head + 1) % pool->queue_size;
+        pool->count -= 1;
+
+        pthread_mutex_unlock(&(pool->lock));
+
+        // 执行实际要做的任务
+        ((*task.function))(task.argument);
+    }
+
+    // 这代码。。。。。
+    --pool->started;// 启动的线程数减1
+
+    // 这是因为上面的break退出时没unlock，可以放到break那里去
+    pthread_mutex_unlock(&(pool->lock));
+    pthread_exit(nullptr);
+
+    return nullptr;
+}
+
 threadpool_t* threadpool_create(int thread_count, int queue_size, int flags)
 {
     threadpool_t* pool;
@@ -112,7 +156,7 @@ int threadpool_add(threadpool_t *pool, void (*function)(void*), void* argument, 
 int threadpool_destory(threadpool_t *pool, int flags)
 {
     printf("Thread pool destory");
-    int i, err = 0;
+    int err = 0;
 
     if(pool == nullptr)
         return THREADPOOL_INVALID;
@@ -131,54 +175,51 @@ int threadpool_destory(threadpool_t *pool, int flags)
             break;
         }
 
-        pool->shutdown =
+        pool->shutdown = (flags & THREADPOOL_GRACEFUL) ? graceful_shutdown : immediate_shutdown;
+
+        // Wake up all worker threads
+        if(pthread_cond_broadcast(&(pool->notify)) != 0 || pthread_mutex_unlock(&(pool->lock)) != 0)
+        {// 若是broadcast失败，就会执行unlock
+            err = THREADPOOL_LOCK_FAILURE;
+            break;
+        }
+        // join all worker threads
+        for(int i = 0; i < pool->thread_count; i++)
+        {
+            if(pthread_join(pool->threads[i], nullptr) != 0)
+            {
+                err = THREADPOOL_THREAD_FAILURE;
+            }
+        }
     }while(false);
+
+    // Only if everything went well do we deallocate the pool
+    if(!err)
+    {
+        threadpool_free(pool);
+    }
+    return err;
 }
+
 
 int threadpool_free(threadpool_t *pool)
 {
-
-}
-
-static void *threadpool_thread(void *threadpool)
-{
-    threadpool_t *pool = (threadpool_t *)threadpool;
-    threadpool_task_t task;
-
-    for(;;)
+    if(pool == nullptr || pool->started > 0)
     {
-        // 必须锁定才能执行 pthread_cond_wait()
-        pthread_mutex_lock(&(pool->lock));
-
-        // 等待条件变量，检查是否有虚假唤醒。当从pthread_cond_wait()返回时，我们拥有锁。
-        while((pool->count == 0) && (!pool->shutdown))
-        {// 若是pool->count > 0说明等到了
-            pthread_cond_wait(&pool->notify, &pool->lock);
-        }
-        if((pool->shutdown == immediate_shutdown) ||
-            ((pool->shutdown == graceful_shutdown) &&
-            (pool->count == 0)))
-        {
-            break;
-        }
-
-        task.function = pool->queue[pool->head].function;
-        task.argument = pool->queue[pool->head].argument;
-        pool->head = (pool->head + 1) % pool->queue_size;
-        pool->count -= 1;
-
-        pthread_mutex_unlock(&(pool->lock));
-
-        // 执行实际要做的任务
-        ((*task.function))(task.argument);
+        return -1;
     }
 
-    // 这代码。。。。。
-    --pool->started;// 启动的线程数减1
+    // Did we manage to allocate
+    if(pool->threads)
+    {
+        free(pool->threads);
+        free(pool->queue);
 
-    // 这是因为上面的break退出时没unlock，可以放到break那里去
-    pthread_mutex_unlock(&(pool->lock));
-    pthread_exit(nullptr);
-
-    return nullptr;
+        pthread_mutex_lock(&(pool->lock));
+        pthread_mutex_destroy(&(pool->lock));
+        pthread_cond_destroy(&(pool->notify));
+    }
+    free(pool);
+    return 0;
 }
+

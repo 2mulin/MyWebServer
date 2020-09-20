@@ -16,7 +16,9 @@ pthread_mutex_t MimeType::lock = PTHREAD_MUTEX_INITIALIZER;
 
 // 全局变量
 pthread_mutex_t qlock = PTHREAD_MUTEX_INITIALIZER;
-priority_queue<mytimer *, deque<mytimer *>, timeCmp> myTimequeue;
+priority_queue<mytimer *, deque<mytimer *>, timerCmp> myTimeQueue;
+
+
 
 // 根据文件后缀确定要发送的数据类型
 std::string MimeType::getMime(const std::string &suffix)
@@ -60,7 +62,7 @@ requestData::requestData()
           keep_alive(false),
           timer(nullptr)
 {
-    cout << "request constructed !" << endl;
+    cout << "requestData's instance constructed !" << endl;
 }
 
 requestData::requestData(int _epoll_fd, int _fd, std::string _path)
@@ -528,7 +530,7 @@ void requestData::handleRequest()
         pthread_mutex_lock(&qlock);
         mytimer *mtimer = new mytimer(this,500);
         timer = mtimer;
-        myTimequeue.push(mtimer);
+        myTimeQueue.push(mtimer);
         pthread_mutex_unlock(&qlock);
 
         // 还没有add，怎么就mod了，add在哪？

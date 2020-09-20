@@ -65,7 +65,7 @@ const int EPOLL_WAIT_TIME = 500;
 
 using namespace std;
 
-// 用到了单例模式
+// 单例模式，根据后缀判断get请求的文件类型
 class MimeType
 {
 private:
@@ -133,6 +133,7 @@ public:
 
     ~requestData();
 
+    // 添加计时器
     void addTimer(mytimer *mtimer);
 
     int getFd() const
@@ -147,6 +148,7 @@ public:
 
     void reset();
 
+    // 分离计时器
     void separateTimer();
 
     void handleRequest();
@@ -189,7 +191,7 @@ struct mytimer
     }
 };
 
-struct timeCmp
+struct timerCmp
 {
     bool operator()(const mytimer *a, const mytimer *b) const
     {
