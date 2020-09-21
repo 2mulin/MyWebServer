@@ -12,7 +12,7 @@
 using namespace std;
 
 extern pthread_mutex_t qlock;// request.cpp中定义的互斥量
-extern struct epoll_event* events;
+extern struct epoll_event* evArray;
 extern priority_queue<mytimer*, deque<mytimer*>, timerCmp> myTimeQueue;// requestData.cpp定义的定时器
 
 const int THREADPOOL_THREAD_COUNT = 4;
@@ -67,7 +67,7 @@ int socket_bind_listen(int port)
         close(listen_fd);
         return -1;
     }
-    return  listen_fd;
+    return listen_fd;
 }
 
 
@@ -78,13 +78,15 @@ void myHandler(void *arg)
     req_data->handleRequest();
 }
 
+// 接收客户端的连接
 void acceptConnection(int listen_fd, int epoll_fd, const string &path)
 {
     struct sockaddr_in client_addr;
     memset(&client_addr, 0, sizeof(struct sockaddr_in));
     socklen_t client_addr_len = 0;
-    int accept_fd = 0;// 接受到的客户端socket文件描述符
-    while((accept_fd == accept(listen_fd, (sockaddr*)&client_addr, &client_addr_len)) > 0)
+    // 接受到的客户端socket文件描述符
+    int accept_fd = accept_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addr_len);
+    while(accept_fd > 0)
     {
         /*
          * tcp的保活机制默认是关闭的
@@ -95,8 +97,7 @@ void acceptConnection(int listen_fd, int epoll_fd, const string &path)
          */
 
         // 设为非阻塞模式
-        int ret = setSocketNonBlocking(listen_fd);
-        if(ret < 0)
+        if(setSocketNonBlocking(listen_fd) < 0)
         {
             perror("set non block Failed!");
             return ;
@@ -104,22 +105,22 @@ void acceptConnection(int listen_fd, int epoll_fd, const string &path)
 
         requestData *req_info = new requestData(epoll_fd, accept_fd, path);
 
-        // 三个位掩码的作用：文件描述符可以读；边缘触发模式；文件描述符只通知一次(保证一个socket连接在任何时候只能被一个线程处理)
-        uint32_t epo_event = EPOLLIN | EPOLLET | EPOLLONESHOT;
-        epoll_add(epoll_fd, accept_fd, req_info, epo_event);
+        // 文件描述符可以读；边缘触发模式；文件描述符只通知一次(保证一个socket连接在任何时候只会被一个线程处理)
+        epoll_add(epoll_fd, accept_fd, req_info, EPOLLIN | EPOLLET | EPOLLONESHOT);
         // 新增时间信息
+
+        // 先搞清楚为什么mytime和requestData相互依赖
+
         mytimer *mtimer = new mytimer(req_info, TIMER_TIME_OUT);
         req_info->addTimer(mtimer);
-
 
         pthread_mutex_lock(&qlock);
         myTimeQueue.push(mtimer);
         pthread_mutex_unlock(&qlock);
     }
-
 }
 
-// 分发处理函数
+// 处理客户端连接函数
 void handle_events(int epoll_fd, int listen_fd, struct epoll_event* events, int events_num, const string &path, threadpool_t* tp)
 {
     for(int i = 0; i < events_num; i++)
@@ -203,9 +204,9 @@ int main(int argc, char *argv[])
 
     // 以线程数，队列大小，位掩码创建一个线程池
     threadpool_t* threadpool = threadpool_create(THREADPOOL_THREAD_COUNT, QUEUE_SIZE, 0);
+
     // 创建socket，bind并且开启监听
     int listen_fd = socket_bind_listen(PORT);
-
     if(listen_fd < 0)
     {
         perror("socket bind listen failed!");
@@ -220,19 +221,20 @@ int main(int argc, char *argv[])
     }
 
     requestData *req = new requestData();
-    req->setFd(listen_fd);
+    req->setFd(listen_fd);// ??? 为什么listen_fd关联了requestData
+
     // 将req关联到listen_fd并添加到epoll实例中去
     epoll_add(epoll_fd, listen_fd, static_cast<void*>(req), EPOLLIN | EPOLLET);
     while(true)
     {
-        // 得到listen_fd上出现IO事件的个数
-        int events_num = my_epoll_wait(epoll_fd, events, MAXEVENTS, -1);
+        // 得到listen_fd上IO就绪事件的个数（events_num）和 evArray（IO就绪事件数组）
+        int events_num = my_epoll_wait(epoll_fd, evArray, MAXEVENTS, -1);
         if(events_num == 0)
             continue;
-        cout << events_num << endl;
+        cout << "监听就绪事件数：" <<  events_num << endl;
 
-        // 遍历events数组，根据监听种类及描述符类型分发操作
-        handle_events(epoll_fd, listen_fd, events, events_num, PATH, threadpool);
+        // 遍历evArray数组，根据监听种类及描述符类型分发操作
+        handle_events(epoll_fd, listen_fd, evArray, events_num, PATH, threadpool);
 
         handle_expired_event();
     }

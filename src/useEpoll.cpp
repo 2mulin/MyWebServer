@@ -7,14 +7,14 @@
 #include "useEpoll.h"
 
 // epoll_event类型的一个数组，在创建一个epoll实例时初始化
-struct epoll_event *events = nullptr;
+struct epoll_event *evArray = nullptr;
 
 // 创建一个epoll实例，返回epoll实例
 int epoll_init() {
     int epoll_fd = epoll_create(LISTENQ + 1);// size参数并不是一个上限，只是告诉内核可能是size个连接，准备好大小足够的数据结构
     if (epoll_fd == -1)
         return -1;
-    events = new struct epoll_event[MAXEVENTS];// events指针初始化
+    evArray = new struct epoll_event[MAXEVENTS];// events指针初始化
     return epoll_fd;
 }
 

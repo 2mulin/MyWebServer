@@ -98,6 +98,7 @@ enum HeaderState
 // 前置声明
 struct mytimer;
 
+//
 struct requestData
 {
 private:
