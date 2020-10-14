@@ -10,10 +10,6 @@
 #include <cerrno>
 #include <cstdio>// perror头文件
 
-const int MAXEVENTS = 5000;
-const int LISTENQ = 1024;// 最大监听长度
-
-int epoll_init();
 int epoll_add(int epollfd,int fd,void* request,uint32_t events);
 int epoll_mod(int epoll_fd,int fd,void* request,uint32_t events);
 int epoll_del(int epoll_fd,int fd,void* request,uint32_t events);

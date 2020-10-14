@@ -5,29 +5,33 @@
 #include <deque>
 #include <queue>
 
-#include "include/useEpoll.h"
+#include "useEpoll.h"
 #include "requestData.h"
 #include "util.h"
 #include "threadpool.h"
 using namespace std;
 
-extern pthread_mutex_t qlock;// request.cpp中定义的互斥量
-extern struct epoll_event* evArray;
-extern priority_queue<mytimer*, deque<mytimer*>, timerCmp> myTimeQueue;// requestData.cpp定义的定时器
+extern pthread_mutex_t qlock;       // request.cpp中定义的互斥量
+extern priority_queue<mytimer *, vector<mytimer *>, timerCmp> myTimeQueue;// requestData.cpp定义的定时器队列
 
 const int THREADPOOL_THREAD_COUNT = 4;
 const int QUEUE_SIZE = 65535;
 
-const int PORT = 22222;
-const int ASK_STATIC_FILE = 1;
+const uint16_t PORT = 23456;
+const int ASK_STATIC_FILE = 1;// 请求静态文件
 const int ASK_IMAGE_STITCH = 2;
 
-const string PATH = "/";
+// epoll要用的东西
+const int LISTENQ = 1024;
+const int MAXEVENTS = 5000;
 
-const int TIMER_TIME_OUT = 500;// 计时器超时设置时间
+// index.html文件存放路径
+const string PATH = "/home/MyWebServer/";
+
+const int TIMER_TIME_OUT = 6000000;// 计时器超时时间（毫秒）
 
 // 根据指定端口创建soket，并且bind，listen
-int socket_bind_listen(int port)
+int socket_bind_listen(uint16_t port)
 {
     // 检查port值，取正确区间范围
     if(port < 1024 || port > 65535)
@@ -58,7 +62,7 @@ int socket_bind_listen(int port)
         return -1;
 
 
-    // 开始监听，最大长度等待队列为listenq(每次只能处理一个connect，其它的只能阻塞, 最多保存LISTENQ个)
+    // 开始监听，第二参数：未决的连接个数（TLPI 951页）
     if(listen(listen_fd, LISTENQ) == -1)
         return -1;
 
@@ -70,47 +74,43 @@ int socket_bind_listen(int port)
     return listen_fd;
 }
 
-
-// 处理函数，处理请求，进入线程池
+// 多线程必须是这个格式的函数指针。
 void myHandler(void *arg)
 {
     requestData *req_data = (requestData*)arg;
     req_data->handleRequest();
 }
 
-// 接收客户端的连接
-void acceptConnection(int listen_fd, int epoll_fd, const string &path)
+// 处理客户端的连接请求处理，全部放到epoll实例中去
+int acceptConnection(int listen_fd, int epoll_fd, const string &path)
 {
+    int acceptSum = 0;// 客户端总共连接数
     struct sockaddr_in client_addr;
     memset(&client_addr, 0, sizeof(struct sockaddr_in));
-    socklen_t client_addr_len = 0;
-    // 接受到的客户端socket文件描述符
-    int accept_fd = accept_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addr_len);
-    while(accept_fd > 0)
+    socklen_t client_addr_len = sizeof(client_addr);
+    int accept_fd;// 接受到的客户端socket文件描述符
+
+    // 处理所有连接请求（listen_fd是非阻塞的）
+    while((accept_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addr_len)) > 0)
     {
-        /*
+        /******************************************************
          * tcp的保活机制默认是关闭的
-        int optval = 0;
-        socklen_t len_optval = 4;
-        getsockopt(accept_fd, SOL_SOCKET,  SO_KEEPALIVE, &optval, &len_optval);
-        cout << "optval ==" << optval << endl;
-         */
+         * int optval = 0;
+         * socklen_t len_optval = 4;
+         * getsockopt(accept_fd, SOL_SOCKET,  SO_KEEPALIVE, &optval, &len_optval);
+         * cout << "optval ==" << optval << endl;
+        ********************************************************/
 
-        // 设为非阻塞模式
-        if(setSocketNonBlocking(listen_fd) < 0)
+        acceptSum++;
+        // 将通过accept得到的客户端fd设置为非阻塞模式
+        if(setSocketNonBlocking(accept_fd) < 0)
         {
-            perror("set non block Failed!");
-            return ;
+            perror("accept_fd setNonBlock Failed!");
         }
-
-        requestData *req_info = new requestData(epoll_fd, accept_fd, path);
-
-        // 文件描述符可以读；边缘触发模式；文件描述符只通知一次(保证一个socket连接在任何时候只会被一个线程处理)
+        // 增加客户端的socket文件描述符到epoll实例中去
+        requestData *req_info = new requestData(accept_fd, epoll_fd, path);
         epoll_add(epoll_fd, accept_fd, req_info, EPOLLIN | EPOLLET | EPOLLONESHOT);
-        // 新增时间信息
-
-        // 先搞清楚为什么mytime和requestData相互依赖
-
+        // 新增计时器，到期时间设置为 nowTime + TIMER_TIME_OUT
         mytimer *mtimer = new mytimer(req_info, TIMER_TIME_OUT);
         req_info->addTimer(mtimer);
 
@@ -118,38 +118,40 @@ void acceptConnection(int listen_fd, int epoll_fd, const string &path)
         myTimeQueue.push(mtimer);
         pthread_mutex_unlock(&qlock);
     }
+    return acceptSum;
 }
 
-// 处理客户端连接函数
-void handle_events(int epoll_fd, int listen_fd, struct epoll_event* events, int events_num, const string &path, threadpool_t* tp)
+// 处理epoll实例中的活跃事件, epoll_wait()会将所有触发的事件放到evArray数组中
+void handle_events(int epoll_fd, int listen_fd, struct epoll_event *evArray, int events_num, const string &path, threadpool_t* tp)
 {
     for(int i = 0; i < events_num; i++)
     {
-        // 获取有事件产生的描述符, data.ptr指定一个包含fd的struct或class
-        requestData* request = (requestData*)events[i].data.ptr;
-        int fd = request->getFd();
-
-        // 有事情发生的描述符为监听描述符
-        if(fd == listen_fd)
+        // EPOLLERR==有错误发生 EPOLLHUB==出现挂断
+        if((evArray[i].events & EPOLLERR)
+           || (evArray[i].events & EPOLLHUP) )
         {
-            acceptConnection(listen_fd, epoll_fd, path);
+            cout << "fd=" << evArray[i].data.fd << " error event\n" << endl;
+            continue;
+        }
+
+        if(evArray[i].data.fd == listen_fd)
+        {// 服务器fd 活跃
+            int count = acceptConnection(listen_fd, epoll_fd, path);
+            cout << "服务器IO事件触发：收到" << count << "个客户端连接请求" << endl;
         }
         else
-        {// 排错:EPOLLERR有错误发生 或者 EPOLLHUB出现挂断 或者 未出现EPOLLIN可读
-            if((events[i].events & EPOLLERR)
-                || (events[i].events & EPOLLHUP)
-                || (!(events[i].events & EPOLLIN)))
-            {
-                cout << "error event\n" << endl;
-                delete request;
-                continue;
-            }
+        {// 客户端fd 活跃
 
-            // 将请求任务加入到线程池中
+            cout << "客户端IO事件触发" << endl;
+            // 获取有事件产生的描述符, data.ptr指向一个包含fd的struct或class对象
+            requestData* request = (requestData*)evArray[i].data.ptr;
             // 加入线程池之前将Timer和request分离
             request->separateTimer();
-            int rc = threadpool_add(tp, myHandler, events[i].data.ptr, 0);
-            // 为什么rc没用？
+
+            // 将请求任务加入到线程池中
+            int ret = threadpool_add(tp, myHandler, evArray[i].data.ptr);
+            if(ret < 0)
+                cout << "线程池添加任务失败" << endl;
         }
     }
 }
@@ -165,20 +167,22 @@ void handle_events(int epoll_fd, int listen_fd, struct epoll_event* events, int 
 (2) 第二个好处是给超时时间一个容忍的时间，就是设定的超时时间是删除的下限(并不是一到超时时间就立即删除)，如果监听的请求在超时后的下一次请求中又一次出现了，
 就不用再重新申请requestData节点了，这样可以继续重复利用前面的requestData，减少了一次delete和一次new的时间。
 */
+
 // 处理过期事件
 void handle_expired_event()
 {
     pthread_mutex_lock(&qlock);
     while(!myTimeQueue.empty())
     {
+        // delete timer就会调用timer的析构函数，析构函数执行了delete timer绑定的requestData的操作
         mytimer *ptimer_now = myTimeQueue.top();
         if(ptimer_now->isDeleted())
         {
             myTimeQueue.pop();
             delete ptimer_now;
         }
-        else if(ptimer_now->isValid() == false)
-        {
+        else if(!ptimer_now->isValid())
+        {// 超时（不合法）
             myTimeQueue.pop();
             delete ptimer_now;
         }
@@ -190,54 +194,80 @@ void handle_expired_event()
     pthread_mutex_unlock(&qlock);
 }
 
-int main(int argc, char *argv[])
+int main()
 {
-    handlerForSIGPIPE();
-
-    // 创建一个epoll实例
-    int epoll_fd = epoll_init();
-    if(epoll_fd < 0)
+    // 忽视SIGPIPE信号
+    struct sigaction sa;
+    sa.sa_flags = 0;
+    sa.sa_handler = SIG_IGN;// 忽视
+    if (sigaction(SIGPIPE, &sa, nullptr))
     {
-        perror("epoll init failed");
-        return 1;
+        perror("sigaction() failed");
+        return -1;
     }
 
-    // 以线程数，队列大小，位掩码创建一个线程池
-    threadpool_t* threadpool = threadpool_create(THREADPOOL_THREAD_COUNT, QUEUE_SIZE, 0);
+    // 以线程数，队列大小，位掩码创建一个线程池，等待执行任务
+    threadpool_t* threadpool = threadpool_create(THREADPOOL_THREAD_COUNT, QUEUE_SIZE);
+    if(threadpool == nullptr)
+    {
+        perror("thread_create() failed");
+        return -1;
+    }
 
     // 创建socket，bind并且开启监听
     int listen_fd = socket_bind_listen(PORT);
     if(listen_fd < 0)
     {
-        perror("socket bind listen failed!");
+        perror("socket_bind_listen failed!");
         return -1;
     }
-    else
-        cout << "bind and listen success！" << endl;
+    // 将监听socket设置为非阻塞
     if(setSocketNonBlocking(listen_fd) < 0)
     {
         perror("set Socket Non Blocking failed");
         return -1;
     }
-
-    requestData *req = new requestData();
-    req->setFd(listen_fd);// ??? 为什么listen_fd关联了requestData
-
-    // 将req关联到listen_fd并添加到epoll实例中去
-    epoll_add(epoll_fd, listen_fd, static_cast<void*>(req), EPOLLIN | EPOLLET);
-    while(true)
+    // 创建一个epoll实例
+    int epoll_fd = epoll_create(LISTENQ + 1);// size参数并不是一个上限，只是告诉内核可能是size个连接，准备好大小足够的数据结构
+    if(epoll_fd < 0)
     {
-        // 得到listen_fd上IO就绪事件的个数（events_num）和 evArray（IO就绪事件数组）
-        int events_num = my_epoll_wait(epoll_fd, evArray, MAXEVENTS, -1);
-        if(events_num == 0)
-            continue;
-        cout << "监听就绪事件数：" <<  events_num << endl;
-
-        // 遍历evArray数组，根据监听种类及描述符类型分发操作
-        handle_events(epoll_fd, listen_fd, evArray, events_num, PATH, threadpool);
-
-        handle_expired_event();
+        perror("epoll_init() failed");
+        return -1;
     }
 
+    // 将服务器的socket_fd添加到epoll实例中
+    struct epoll_event server_event;
+    server_event.events = EPOLLIN | EPOLLET;
+    server_event.data.fd = listen_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listen_fd, &server_event);
+
+    // 初始化evArray数组
+    struct epoll_event* evArray = new struct epoll_event[MAXEVENTS];
+
+    int count = 3;
+    int events_num = 0;// 触发事件数
+    while(events_num >= 0)
+    {
+        // 得到listen_fd上IO就绪事件的个数（events_num）和 evArray（IO就绪事件数组）
+        events_num = my_epoll_wait(epoll_fd, evArray, MAXEVENTS, -1);
+        if(events_num <= 0)
+            continue;
+        cout << "就绪事件数：" <<  events_num << endl;
+        //cout << "计时器队列大小：" << myTimeQueue.size() << endl;
+
+        if(count > 0)
+        {
+            // 遍历evArray数组, 找到活跃事件，根据监听种类及描述符类型分别操作
+            handle_events(epoll_fd, listen_fd, evArray, events_num, PATH, threadpool);
+            count--;
+        }
+
+        cout << endl;
+        // 处理过期事件
+        // handle_expired_event();
+    }
+
+    delete[] evArray;
+    evArray = nullptr;
     return 0;
 }

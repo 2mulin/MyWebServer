@@ -103,12 +103,12 @@ struct requestData
 {
 private:
     int againTime;
-    std::string path;
-    int fd;
+    int fd;// 发送这个request的客户端fd
     int epoll_fd;// epoll实例
-    std::string content;// readn()读到的请求报文
+    std::string path;// 文件夹目录
+    std::string content;// readn()读到的请求报文全部内容
     int method;
-    int HTTPversion;
+    int HttpVersion;
     std::string file_name;// 文件路径
     int now_read_pos;
     int state;// 解析报文的状态
@@ -130,7 +130,7 @@ private:
 public:
     requestData();
 
-    requestData(int _epoll_fd, int _fd, std::string _path);
+    requestData(int _epoll_fd, int _fd, const string& _path);
 
     ~requestData();
 
@@ -157,10 +157,10 @@ public:
     void handleError(int fd, int err_num, std::string short_msg);
 };
 
-// 计时器
+// 计时器，主要负责
 struct mytimer
 {
-    bool deleted;
+    bool deleted;//
     size_t expired_time;// 到期时间
     requestData *request_data;
 
@@ -181,17 +181,26 @@ struct mytimer
         deleted = true;
     }
 
+    // 包含的requestData对象是否被删除
     bool isDeleted() const
     {
         return deleted;
     }
 
+    // 得到过期时间
     size_t getExptime() const
     {
         return expired_time;
     }
+
+//    // 由于priority_queue存放的指针，重载operator<没有作用
+//    bool operator<(const mytimer& b) const
+//    {
+//        return this->getExptime() < b.getExptime();
+//    }
 };
 
+// 用于构建优先队列
 struct timerCmp
 {
     bool operator()(const mytimer *a, const mytimer *b) const

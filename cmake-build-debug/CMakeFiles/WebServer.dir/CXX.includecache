@@ -64,14 +64,6 @@ unistd.h
 cerrno
 -
 
-/home/MyWebServer/include/useEpoll.h
-sys/epoll.h
--
-cerrno
--
-cstdio
--
-
 /home/MyWebServer/main.cpp
 sys/socket.h
 -
@@ -85,12 +77,22 @@ deque
 -
 queue
 -
-include/useEpoll.h
-/home/MyWebServer/include/useEpoll.h
+useEpoll.h
+/home/MyWebServer/useEpoll.h
 requestData.h
 /home/MyWebServer/requestData.h
 util.h
 /home/MyWebServer/util.h
 threadpool.h
 /home/MyWebServer/threadpool.h
+
+/home/MyWebServer/src/requestData.cpp
+cstring
+-
+requestData.h
+/home/MyWebServer/src/requestData.h
+
+/home/MyWebServer/src/threadpool.cpp
+threadpool.h
+/home/MyWebServer/src/threadpool.h
 

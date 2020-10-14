@@ -16,9 +16,7 @@ pthread_mutex_t MimeType::lock = PTHREAD_MUTEX_INITIALIZER;
 
 // 全局变量
 pthread_mutex_t qlock = PTHREAD_MUTEX_INITIALIZER;
-priority_queue<mytimer *, deque<mytimer *>, timerCmp> myTimeQueue;
-
-
+priority_queue<mytimer *, vector<mytimer *>, timerCmp> myTimeQueue;
 
 // 根据文件后缀确定要发送的数据类型
 std::string MimeType::getMime(const std::string &suffix)
@@ -62,30 +60,29 @@ requestData::requestData()
           keep_alive(false),
           timer(nullptr)
 {
-    cout << "requestData's instance constructed !" << endl;
+    //cout << "requestData无参构造函数调用: " << this << endl;
 }
 
-requestData::requestData(int _epoll_fd, int _fd, std::string _path)
+// 初始化列表的顺序必须和class的变量申明顺序一致
+
+requestData::requestData(int _fd, int _epoll_fd, const string& _path)
         : againTime(0),
-          path(_path),
           fd(_fd),
           epoll_fd(_epoll_fd),
+          path(_path),
           now_read_pos(0),
           state(STATE_PARSE_URI),
           h_state(HeaderState::h_start),
           keep_alive(false),
           timer(nullptr)
-{}
+{
+    //cout << "requestData有参构造函数调用: " << this << endl;
+}
 
 requestData::~requestData()
 {
-    cout << "~requestData()" << endl;
-    struct epoll_event ev;
-    // 读请求，边缘触发，一次通知
-    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-    ev.data.ptr = (void*)this;
-    // 从epoll实例中的兴趣列表中删除fd
-    epoll_ctl(epoll_fd,EPOLL_CTL_DEL,fd,&ev);
+    //cout << "析构request：fd=" << fd << "\trequest地址=" << this << endl;
+    epoll_del(epoll_fd, fd, static_cast<void *>(this), EPOLLIN | EPOLLET | EPOLLONESHOT);
     if(timer != nullptr)
     {
         timer->clearReq();
@@ -161,9 +158,9 @@ int requestData::parse_URI()
         {
             string ver = request_line.substr(pos + 1, 3);
             if(ver == "1.0")
-                HTTPversion = HTTP_10;
+                HttpVersion = HTTP_10;
             else if(ver == "1.1")
-                HTTPversion - HTTP_11;
+                HttpVersion - HTTP_11;
             else
                 return PARSE_URI_ERROR;
         }
@@ -404,25 +401,25 @@ void requestData::separateTimer()
     }
 }
 
-// 处理请求
+// 处理请求，一切的起点
 void requestData::handleRequest()
 {
     char buff[MAX_BUFF];
     bool isError = false;
     while(true)
     {
+        // readn可能有问题，出错了
         int read_num = readn(fd, buff, MAX_BUFF);// 读数据
-
         if(read_num < 0)
         {
-            perror("1");
+            perror("readn没有读到数据");
             isError = true;
             break;
         }
         else if(read_num == 0)
         {
             // 有请求但是读不到数据，可能是Request Aborted
-            perror("read_num == 0");
+            perror("read_num == 0，有请求但是读不到数据");
             if(errno == EAGAIN)
             {
                 if(againTime > AGAIN_MAX_TIMES)
@@ -533,7 +530,7 @@ void requestData::handleRequest()
         myTimeQueue.push(mtimer);
         pthread_mutex_unlock(&qlock);
 
-        // 还没有add，怎么就mod了，add在哪？
+        // epoll_add调用都在main函数
         uint32_t events = EPOLLIN | EPOLLET | EPOLLONESHOT;
         int ret = epoll_mod(epoll_fd, fd, static_cast<void*>(this),events);
         if(ret < 0)
@@ -568,28 +565,33 @@ void requestData::handleError(int fd, int err_num, std::string short_msg)
     writen(fd, send_buf,strlen(send_buf));// 写入body
 }
 
-// mytimer类的实现
-
+/****************************************************
+ * @param _request_data 要绑定计时器的requestData实例
+ * @param timeout 时间限制
+ ****************************************************/
 mytimer::mytimer(requestData *_request_data, int timeout)
     :deleted(false), request_data(_request_data)
 {
+    cout << "mytimer有参函数构造成功: " << this << endl;
     struct timeval now;
     gettimeofday(&now, nullptr);// 返回日历时间到now中
-    // expired_time 表示的毫秒
+
+    // expired_time 单位是毫秒
     expired_time = ((now.tv_sec * 1000) + (now.tv_usec / 1000)) + timeout;
 }
 
+// delete requestData对象
 mytimer::~mytimer()
 {
     cout << "~mytimer()" << endl;
     if(request_data != nullptr)
     {
-        cout << "request_data=" << request_data << endl;
         delete request_data;
         request_data = nullptr;
     }
 }
 
+// 重新设置timeout
 void mytimer::update(int timeout)
 {
     struct timeval now;
@@ -597,22 +599,26 @@ void mytimer::update(int timeout)
     expired_time = ((now.tv_sec * 1000) + (now.tv_usec / 1000)) + timeout;
 }
 
+// 到现在是否超时
 bool mytimer::isValid()
 {
     struct timeval now;
     gettimeofday(&now, nullptr);
+    // 从格林威治时间到现在有多少毫秒
     size_t temp = (now.tv_sec * 1000 + now.tv_usec / 1000);
+    // 不合法
     if(temp < expired_time)
         return true;
-        else
+    else
     {
         this->setDeleted();
         return false;
     }
 }
 
+// 重置request_data为nullptr（并未delete）
 void mytimer::clearReq()
 {
-    delete request_data;
+    request_data = nullptr;
     this->setDeleted();
 }

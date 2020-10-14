@@ -13,9 +13,6 @@
 #include <unistd.h>
 #include <cerrno>
 
-// 改变对SIGPIPE信号的处理为忽视
-void handlerForSIGPIPE();
-
 // 设置fd为非阻塞
 int setSocketNonBlocking(int fd);
 
