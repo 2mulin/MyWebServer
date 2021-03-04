@@ -1,1 +1,0 @@
-/usr/bin/g++    -std=c++11 -g -Wall -Wextra -pthread -lopencv_core -lopencv_imgproc -lopencv_highgui -g    CMakeFiles/WebServer.dir/main.cpp.o CMakeFiles/WebServer.dir/src/threadpool.cpp.o CMakeFiles/WebServer.dir/src/util.cpp.o CMakeFiles/WebServer.dir/src/useEpoll.cpp.o CMakeFiles/WebServer.dir/src/requestData.cpp.o  -o WebServer -rdynamic 
