@@ -1,245 +1,160 @@
 /************************************************************************************
  *@author RedDragon
  *@date 2020/9/5
- *@brief
- *线程池就是通过pthread_create()创建固定线程数，省去了来一个任务才创建线程和销毁线程
- *的开销，我这里创建了四个固定线程，通过互斥量mutex和条件变量cond和一个任务队列task_queue
- *完成一个生产者消费者模型.
- *生产者就是threadpool_add()函数负责添加任务, 由四个线程负责消费（threadpool_thread()完成任务,
- *一旦生产者添加任务，就使用pthread_cond_signal()通知消费者threadpool_thread()去完成任务）
+ *@brief 线程池实现
+ * 就是通过pthread_create()创建固定线程数，省去了来一个任务才创建线程和销毁线程
+ * 的开销，我这里创建了四个固定线程，通过互斥量mutex和条件变量cond和一个任务队列task_queue添加任务
+ * 和完成任务.
+ *
+ * addTask是生产者
+ * worker是消费者
 *************************************************************************************/
 
 #include "threadpool.h"
 
-// 被创建的线程（静态函数，只能在本文件中使用）
-static void *threadpool_thread(void *threadpool)
-{
-    threadpool_t *pool = (threadpool_t *)threadpool;
+threadPool threadPool::pool;
 
+// 消费者线程
+void* threadPool::worker(void *arg)
+{
     for(;;)
     {
-        pthread_mutex_lock(&(pool->lock));// 加锁
-
-        // 等待条件变量，检查是否有虚假唤醒。
-
-        // 用while循环的原因是pthread_cond_wait返回时，并不能确定判断条件的状态，
-        // 所以应该立即重新检查判断条件，确定条件成立（可以消费了）
-        // 也可能存在虚假唤醒（错误的唤醒，即使不能生产者没有生产）
-        while((pool->count == 0) && (!pool->shutdown))
-        {
-            pthread_cond_wait(&pool->notify, &pool->lock);
+        pthread_mutex_lock(&pool.mtx);
+        while (pool.taskCount <= 0 && !pool.shutdown)
+        {// 没有任务就阻塞, 等待任务
+            pthread_cond_wait(&pool.cond, &pool.mtx);
         }
-
-        // 判断线程是否正在关闭，若是再关闭，则该线程将会被关闭
-        if((pool->shutdown == immediate_shutdown) ||
-           ( (pool->shutdown == graceful_shutdown) && (pool->count == 0) ))
-        {
-            pthread_mutex_unlock(&(pool->lock));
+        if(pool.shutdown == immediate_shutdown)
             break;
-        }
+        if(pool.shutdown == graceful_shutdown && pool.taskCount == 0)
+            break;// 优雅关闭, 任务做完才关闭
 
-        threadpool_task_t task;
-        task.function = pool->task_queue[pool->head].function;
-        task.argument = pool->task_queue[pool->head].argument;
+        struct task t1 = pool.taskQueue[pool.begin];
+        pool.begin = (pool.begin + 1) % pool.queueSize;
+        --pool.taskCount;
 
-        // 这就算是消费了，不用task执行完，那太慢了，
-        pool->head = (pool->head + 1) % pool->queue_size;
-        pool->count -= 1;
-
-        pthread_mutex_unlock(&(pool->lock));// 解锁
-
-        // 执行实际要做的任务
-        (*(task.function))(task.argument);
-        // 执行完任务进入下一个循环
+        pthread_mutex_unlock(&pool.mtx);
+        // 执行真正的任务
+        (*t1.function)(t1.argument);
     }
-
-    pool->started -= 1;// 线程池正在关闭，启动的线程数减1
-
-    pthread_exit(nullptr);// 线程返回
-    //return nullptr;
+    --pool.threadCount;
+    pthread_mutex_unlock(&pool.mtx);
+    pthread_exit(nullptr);// 线程退出
 }
 
-threadpool_t* threadpool_create(int thread_count, int queue_size)
+// 公有成员函数
+threadPool::threadPool()
+    : threadPool(THREAD_COUNT , QUEUE_SIZE)
+{}
+
+threadPool::threadPool(int count, int queue_size)
 {
-    threadpool_t* pool = nullptr;
-
-    // 编程技巧，实现goto
-    do
-    {
-        // 参数不合法，退出
-        if(thread_count <= 0 || thread_count > MAX_THREAD_COUNT || queue_size <= 0 || queue_size > MAX_QUEUE)
-            return nullptr;
-
-        // 分配线程池内存,失败则退出
-        if((pool = (threadpool_t *)malloc(sizeof(threadpool_t))) == nullptr)
-            break;
-
-        // 动态初始化互斥量、条件变量, 假设一定初始化成功
-        pthread_mutex_init(&(pool->lock), nullptr);
-        pthread_cond_init(&(pool->notify), nullptr);
-
-        // 为线程id数组分配内存
-        pool->threads = (pthread_t *)malloc(sizeof(pthread_t) * thread_count);
-        if(pool->threads == nullptr)
-            break;
-        //为task_queue分配内存
-        pool->task_queue = (threadpool_task_t *)malloc(sizeof(threadpool_task_t) * queue_size);
-        if(pool->task_queue == nullptr)
-            break;
-
-        // threadpool_t结构体初始化
-        pool->threadCount = 0;// 下面for循环会添加线程，threadCount才会++
-        pool->queue_size = queue_size;
-        pool->head = 0;
-        pool->tail = 0;
-        pool->count = 0;
-        pool->shutdown = 0;
-        pool->started = 0;
-
-        // 开启工作线程
-        for (int i = 0; i < thread_count; ++i)
-        {
-            // 系统调用 ptherad_create() 创建线程，新线程通过调用带有参数的threadpool_thread函数开始运行
-            if(pthread_create(&(pool->threads[i]), nullptr, threadpool_thread, (void*)pool) != 0)
-            {// 销毁线程池
-                threadpool_destory(pool,0);
-                break;
-            }
-            pool->threadCount++;
-            pool->started++;
+    pthread_mutex_init(&mtx, nullptr);
+    pthread_cond_init(&cond, nullptr);
+    tidArr = new pthread_t[count];
+    queueSize = queue_size;
+    taskQueue = new task[queue_size];
+    threadCount = 0;
+    for(int i = 0; i < count; ++i){
+        int ret = pthread_create(&tidArr[i], nullptr, worker, nullptr);
+        if(ret != 0)
+        {// 内存等资源不够, 可能创建线程失败
+            printf("errno=%d: %s\n",ret, strerror(ret));
+            pthread_mutex_destroy(&mtx);
+            pthread_cond_destroy(&cond);
+            delete tidArr;
+            delete taskQueue;
+            // 创建线程失败, 提前终止
+            throw std::runtime_error("1. 检查内存是否足够, 2. 检查参数是否正确, 如attr是否初始化\n");
         }
-        // 全部成功，返回线程池pool
-        return pool;
-
-    }while (false);
-
-    // 出现错误，释放已经申请的内存
-    while(threadpool_free(pool));
-
-    return nullptr;
+        else
+        {
+            printf("%d线程创建成功!\n", i);
+            threadCount++;
+        }
+    }
+    begin = end = taskCount = 0;
+    shutdown = false;
+}
+threadPool::~threadPool()
+{
+    // 如果线程还在运行, 就join
+    if(!shutdown)
+        joinAll(THREADPOOL_GRACEFUL);
+    pthread_mutex_destroy(&mtx);
+    pthread_cond_destroy(&cond);
+    delete tidArr;
+    delete taskQueue;
 }
 
-int threadpool_add(threadpool_t *pool, void (*function)(void*), void* argument)
+int threadPool::addTask(struct task tk)
 {
-    int err = 0;
-
-    if(pool == nullptr || function == nullptr)
-    {
+    if(tk.function == nullptr)
         return THREADPOOL_INVALID;
-    }
-    // 加锁
-    if(pthread_mutex_lock(&pool->lock) != 0)
+    int ret = pthread_mutex_lock(&mtx); // 加锁
+    if(ret != 0)
     {
+        printf("%s\n", strerror(ret));
         return THREADPOOL_LOCK_FAILURE;
     }
 
-    int next = (pool->tail + 1) % pool->queue_size;// 避免数组越界，循环使用任务数组空间。
-    do
-    {
-        // 挂起任务数量超过任务队列限制，无法再添加任务
-        if(pool->count == pool->queue_size)
-        {
+    int next = (end + 1)%queueSize;
+    int err = 0;
+    do{
+        if(taskCount == queueSize){
             err = THREADPOOL_QUEUE_FULL;
             break;
         }
-        // Are we shutting down?
-        if(pool->shutdown)
-        {
+        if(shutdown){
             err = THREADPOOL_SHUTDOWN;
             break;
         }
-        // 将任务添加到任务队列
-        pool->task_queue[pool->tail].function = function;
-        pool->task_queue[pool->tail].argument = argument;
-        pool->tail = next;
-        pool->count += 1;
-        // 通知消费者有任务了
-        if(pthread_cond_signal(&(pool->notify)) != 0)
-        {
+        taskQueue[end] = tk;
+        ++taskCount;
+        end = next;
+        ret = pthread_cond_signal(&cond);
+        if(ret != 0)
             err = THREADPOOL_LOCK_FAILURE;
-            break;
-        }
-    }while (false);
+    }while(false);
 
-    // 解锁
-    if(pthread_mutex_unlock(&pool->lock) != 0)
+    ret = pthread_mutex_unlock(&mtx);// 解锁
+    if(ret != 0)
     {
-        err = THREADPOOL_LOCK_FAILURE;
+        printf("%s\n", strerror(ret));
+        return THREADPOOL_LOCK_FAILURE;
     }
     return err;
 }
 
-int threadpool_destory(threadpool_t *pool, int flags)
+int threadPool::joinAll(int flags)
 {
-    printf("Thread pool destory");
-    int err = 0;
-
-    if(pool == nullptr)
-        return THREADPOOL_INVALID;
-
-    if(pthread_mutex_lock(&(pool->lock)) != 0)
-    {
+    int ret = pthread_mutex_lock(&mtx);
+    if(ret != 0)
         return THREADPOOL_LOCK_FAILURE;
-    }
-
-    do
-    {
-        // already shutting down
-        if(pool->shutdown)
-        {
+    int err = 0;
+    do{
+        if(shutdown){
             err = THREADPOOL_SHUTDOWN;
             break;
         }
-
-        pool->shutdown = (flags & THREADPOOL_GRACEFUL) ? graceful_shutdown : immediate_shutdown;
-
-        // Wake up all worker threads
-        if(pthread_cond_broadcast(&(pool->notify)) != 0 || pthread_mutex_unlock(&(pool->lock)) != 0)
-        {// 若是broadcast失败，就会执行unlock
+        // 根据flag选择关闭的方式
+        shutdown = flags & THREADPOOL_GRACEFUL ? graceful_shutdown : immediate_shutdown;
+        // 唤醒所有线程, 所有线程都会退出, 因为shutdown被改变了, 不会再满足while了
+        ret = pthread_cond_broadcast(&cond);
+        if(ret != 0)
             err = THREADPOOL_LOCK_FAILURE;
-            break;
-        }
-        // join all worker threads
-        for(int i = 0; i < pool->threadCount; i++)
+        ret = pthread_mutex_unlock(&mtx);
+        if(ret != 0)
+            err = THREADPOOL_LOCK_FAILURE;
+
+        for(int i = 0; i < threadCount; ++i)
         {
-            if(pthread_join(pool->threads[i], nullptr) != 0)
-            {
-                err = THREADPOOL_THREAD_FAILURE;
-            }
+            ret = pthread_join(tidArr[i], nullptr);
+            if(ret != 0)
+                err = THREADPOOL_JOIN_FAILURE;
+            --threadCount;
         }
     }while(false);
 
-    // Only if everything went well do we deallocate the pool
-    if(!err)
-    {
-        threadpool_free(pool);
-    }
     return err;
 }
-
-
-int threadpool_free(threadpool_t *pool)
-{
-    // 不需要释放
-    if(pool == nullptr)
-        return 0;
-
-    if(pool->started > 0)
-    {// 若是还有正在运行的线程，也不会释放内存
-        return -1;
-    }
-
-    // threadpool_create申请内存时可能有部分是成功的，所以free前要判断一下。
-    if(pool->threads)
-        free(pool->threads);
-    if(pool->task_queue)
-        free(pool->task_queue);
-
-    // 有点危险，无法确定mutex和cond是否已经初始化，就尝试释放
-    pthread_mutex_destroy(&(pool->lock));   // 释放互斥量
-    pthread_cond_destroy(&(pool->notify));  // 释放条件变量
-
-    free(pool);
-    return 0;
-}
-
