@@ -7,19 +7,27 @@
 #ifndef WEBSERVER_UTIL_H
 #define WEBSERVER_UTIL_H
 
-#include <cstdlib>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <unordered_map>
+
 #include <csignal>
-#include <fcntl.h>
 #include <unistd.h>
-#include <cerrno>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
-// 设置fd为非阻塞
-int setSocketNonBlocking(int fd);
+const int LISTENQ = 1024;
 
-// readn,保证读到n个字节
-ssize_t readn(int fd, void* buff, std::size_t n);
+// 设置忽略SIGPIPE信号
+void handlerForSIGPIPE();
+// 开启服务器监听
+int socket_bind_listen(int port);
+int setNonBlock(int fd);
+int readn(int fd, char* buf, size_t size);
 
-// writen，保证写n个字节
-ssize_t writen(int fd, const void* buff, std::size_t n);
-
+// 根据后缀得到文件类型
+std::string getMimeType(const std::string& suffix);
 #endif //WEBSERVER_UTIL_H

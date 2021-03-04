@@ -15,7 +15,7 @@ project(WebServer)
 #        -lopencv_imgproc
 #        -lopencv_highgui
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -Wall -Wextra -pthread -lopencv_core -lopencv_imgproc -lopencv_highgui")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -Wall -Wextra -lpthread -lopencv_core -lopencv_imgproc -lopencv_highgui")
 
 # 将给定的路径添加到编译器搜索包含文件（.h文件）的路径列表中。
 include_directories(include)
