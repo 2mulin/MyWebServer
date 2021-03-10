@@ -1,14 +1,17 @@
 /***********************************************************
  *@author RedDragon
  *@date 2020/9/5
- *@brief 
+ *@brief 线程池
+ * 本来是static threadPool对象, 现在改成了static threadPool指针
+ * 因为这里对象不好设置为饿汉式, 因为饿汉式要把static threadPool
+ * 对象放在getInstance()函数才是饿汉式, 但是那样的话, 其他成员函数就
+ * 无法访问单例对象了, 所以这里设置成指针, 初始化为nullptr.等到第一次调用
+ * getInstance就会对指针初始化.
 ***********************************************************/
 
 #ifndef WEBSERVER_THREADPOOL_H
 #define WEBSERVER_THREADPOOL_H
-#include <exception>
-#include "requestData.h"
-#include "Lock.h"
+#include <pthread.h>
 
 const int THREAD_COUNT = 4;     // 固定线程数
 const int QUEUE_SIZE = 65535;   // 任务队列大小
@@ -30,7 +33,7 @@ enum threadPool_shutdown_t
     graceful_shutdown  = 2  // 优雅关闭
 };
 
-struct task
+struct threadPool_task
 {
     void (*function)(void*);    // 函数指针指向执行任务的函数
     void *argument;             // 传递给函数的参数
@@ -42,7 +45,7 @@ private:
     pthread_mutex_t mtx;    // 互斥量
     pthread_cond_t cond;    // 条件变量，用来通知worker thread
     pthread_t *tidArr;      // 所有线程ID
-    task *taskQueue;        // 任务队列
+    threadPool_task *taskQueue;        // 任务队列
     int threadCount;        // 线程数目
     int queueSize;          // 任务队列大小
     int begin;
@@ -67,7 +70,7 @@ public:
         return pool;
     };
     // 添加任务
-    int addTask(struct task tk);
+    int addTask(struct threadPool_task tk);
     // join所有线程
     int joinAll(int flags);
 };

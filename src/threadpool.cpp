@@ -9,14 +9,18 @@
  * addTask是生产者
  * worker是消费者
 *************************************************************************************/
-
 #include "threadpool.h"
+#include <stdexcept>
+#include <cstring>
 
+// 唯一单例
 threadPool threadPool::pool;
 
 // 消费者线程
 void* threadPool::worker(void *arg)
 {
+    if(arg != nullptr)
+        arg = nullptr;
     for(;;)
     {
         pthread_mutex_lock(&pool.mtx);
@@ -29,7 +33,7 @@ void* threadPool::worker(void *arg)
         if(pool.shutdown == graceful_shutdown && pool.taskCount == 0)
             break;// 优雅关闭, 任务做完才关闭
 
-        struct task t1 = pool.taskQueue[pool.begin];
+        struct threadPool_task t1 = pool.taskQueue[pool.begin];
         pool.begin = (pool.begin + 1) % pool.queueSize;
         --pool.taskCount;
 
@@ -53,7 +57,7 @@ threadPool::threadPool(int count, int queue_size)
     pthread_cond_init(&cond, nullptr);
     tidArr = new pthread_t[count];
     queueSize = queue_size;
-    taskQueue = new task[queue_size];
+    taskQueue = new threadPool_task[queue_size];
     threadCount = 0;
     for(int i = 0; i < count; ++i){
         int ret = pthread_create(&tidArr[i], nullptr, worker, nullptr);
@@ -68,10 +72,7 @@ threadPool::threadPool(int count, int queue_size)
             throw std::runtime_error("1. 检查内存是否足够, 2. 检查参数是否正确, 如attr是否初始化\n");
         }
         else
-        {
-            printf("%d线程创建成功!\n", i);
             threadCount++;
-        }
     }
     begin = end = taskCount = 0;
     shutdown = false;
@@ -87,7 +88,7 @@ threadPool::~threadPool()
     delete taskQueue;
 }
 
-int threadPool::addTask(struct task tk)
+int threadPool::addTask(struct threadPool_task tk)
 {
     if(tk.function == nullptr)
         return THREADPOOL_INVALID;
