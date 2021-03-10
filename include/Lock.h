@@ -1,8 +1,7 @@
 /***********************************************************
  *@author RedDragon
  *@date 2021/3/2
- *@brief 这个锁专门针对requestData队列
- * 保证req_queue不会同时被两个工作线程修改
+ *@brief RAII锁
 ***********************************************************/
 
 #ifndef WEBSERVER_LOCK_H
@@ -18,7 +17,7 @@ private:
 public:
     explicit Lock();
     ~Lock();
-    // 删除
+    // 不可拷贝
     Lock(const Lock&) = delete;
     Lock(Lock&&) = delete;
     Lock& operator=(const Lock&) = delete;
