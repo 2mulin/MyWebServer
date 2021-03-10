@@ -9,7 +9,7 @@ project(WebServer)
 #        -g                    # 生成debug信息(如果使用-g3会造成调试时行号与实际运行对不上的现象)
 #        -Wall                 # 生成所有警告信息
 #        -Wextra               # 对所有合法但是值得怀疑的表达式进行警告
-#        -pthread              # 线程支持（g++用的-lpthread参数）
+#        -lpthread              # 线程支持
 #下面都是opencv的参数
 #        -lopencv_core
 #        -lopencv_imgproc
