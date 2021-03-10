@@ -15,9 +15,9 @@ int epoll_init()
     return epoll_fd;
 }
 
-int epoll_add(int epoll_fd, int fd, struct epoll_event* ev)
+int epoll_add(int fd, struct epoll_event* ev)
 {
-    int ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, ev);
+    int ret = epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, ev);
     if (ret == -1) {
         perror("epoll_add");
         return -1;
@@ -26,9 +26,9 @@ int epoll_add(int epoll_fd, int fd, struct epoll_event* ev)
 }
 
 // 修改fd状态
-int epoll_mod(int epoll_fd, int fd, struct epoll_event* ev)
+int epoll_mod(int fd, struct epoll_event* ev)
 {
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, ev) == -1){
+    if(epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, ev) == -1){
         perror("epoll_mod failed");
         return -1;
     }
@@ -36,9 +36,9 @@ int epoll_mod(int epoll_fd, int fd, struct epoll_event* ev)
 }
 
 // 从epoll实例中移除fd
-int epoll_del(int epoll_fd, int fd, struct epoll_event* ev)
+int epoll_del(int fd, struct epoll_event* ev)
 {
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, ev) == -1){
+    if(epoll_ctl(epollFd, EPOLL_CTL_DEL, fd, ev) == -1){
         perror("epoll_del failed");
         return -1;
     }

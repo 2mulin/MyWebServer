@@ -9,10 +9,12 @@
 #include <sys/epoll.h>
 #include <cstdio>
 
+extern int epollFd;
+
 int epoll_init();
-int epoll_add(int epoll_fd, int fd, struct epoll_event* ev);
-int epoll_mod(int epoll_fd,int fd, struct epoll_event* ev);
-int epoll_del(int epoll_fd, int fd, struct epoll_event* ev);
+int epoll_add(int fd, struct epoll_event* ev);
+int epoll_mod(int fd, struct epoll_event* ev);
+int epoll_del(int fd, struct epoll_event* ev);
 
 
 #endif //WEBSERVER_USEEPOLL_H
