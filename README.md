@@ -1,4 +1,4 @@
-# WebServer（debuging）
+# WebServer
 ### 编译环境：
 CentOS7.7、g++4.8.5、gdb 7.9、cmake2.8.12.2、make3.82
 
