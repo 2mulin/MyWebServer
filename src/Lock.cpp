@@ -6,14 +6,43 @@
 
 #include "Lock.h"
 
-pthread_mutex_t Lock::mtx = PTHREAD_MUTEX_INITIALIZER;
+Mutex::Mutex()
+{
+    pthread_mutex_init(&mtx, nullptr);
+}
+Mutex::~Mutex()
+{
+    pthread_mutex_destroy(&mtx);
+}
 
-Lock::Lock()
+void Mutex::lock()
 {
     pthread_mutex_lock(&mtx);
 }
 
-Lock::~Lock()
+void Mutex::unlock()
 {
     pthread_mutex_unlock(&mtx);
+}
+
+
+rwLock::rwLock()
+{
+    pthread_rwlock_init(&lock, nullptr);
+}
+rwLock::~rwLock()
+{
+    pthread_rwlock_destroy(&lock);
+}
+void rwLock::readLock()
+{
+    pthread_rwlock_wrlock(&lock);
+}
+void rwLock::writeLock()
+{
+    pthread_rwlock_wrlock(&lock);
+}
+void rwLock::unlock()
+{
+    pthread_rwlock_unlock(&lock);
 }

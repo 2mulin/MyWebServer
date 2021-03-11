@@ -9,19 +9,39 @@
 
 #include <pthread.h>
 
-// RAII
-class Lock
+class nonCopyAble
 {
-private:
-    static pthread_mutex_t mtx;
 public:
-    explicit Lock();
-    ~Lock();
-    // 不可拷贝
-    Lock(const Lock&) = delete;
-    Lock(Lock&&) = delete;
-    Lock& operator=(const Lock&) = delete;
+    nonCopyAble() = default;
+    ~nonCopyAble() = default;
+    // 禁用拷贝
+    nonCopyAble(const nonCopyAble&) = delete;
+    nonCopyAble& operator=(const nonCopyAble&) = delete;
 };
 
+// RAII
+class Mutex : public nonCopyAble
+{
+private:
+    pthread_mutex_t mtx;
+public:
+    explicit Mutex();
+    void lock();
+    void unlock();
+    ~Mutex();
+};
+
+
+class rwLock: public nonCopyAble
+{
+private:
+    pthread_rwlock_t lock;
+public:
+    explicit rwLock();
+    ~rwLock();
+    void readLock();
+    void writeLock();
+    void unlock();
+};
 
 #endif //WEBSERVER_LOCK_H
