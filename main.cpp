@@ -1,12 +1,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <sys/time.h>
 #include <unistd.h>
+#include <csignal>
 #include <cstring>
-#include <list>
-using std::list;
 
-//#include "timerList.h"1
 #include "threadpool.h"
 #include "util.h"
 #include "useEpoll.h"
@@ -14,13 +11,12 @@ using std::list;
 #include "Lock.h"
 #include "Timer.h"
 
-const int MAXEVENTS = 5000; // epoll_event数组大小
+const int MAXEVENTS = 4096; // epoll_event数组大小
 int epollFd = -1;           // EPOLL实例描述符
-const long long TIMEOUT = 30000; // 超时时间
-list<Timer*> timerList;  // 所有客户端连接
+const uint64_t TIMEOUT = 30000;  // 连接超时时间
+TimerManager timerQueue;    // 所有计时器
 
 void task(void *arg);
-int acceptConnection(int listen_fd, const string& resPath);
 
 int main(int argc, char* argv[])
 {
@@ -61,15 +57,15 @@ int main(int argc, char* argv[])
                 break;
             case '?':
                 printf("usage: %s -P num -R ResourcesPath\n", basename(argv[0]));
-                break;
+                return -1;
             default:
                 break;
         }
     }
-    printf("目录: %s\n", resPath.data());
+    printf("资源目录: %s\n", resPath.data());
 
     // 忽视SIGPIPE信号(如果客户端突然关闭读端, 那么服务器write就会碰到一个SIGPIPE信号)
-    handlerForSIGPIPE();
+    setSigIgn(SIGPIPE);
     int listen_fd = socket_bind_listen(PORT);
     if(listen_fd == -1)
     {
@@ -94,60 +90,68 @@ int main(int argc, char* argv[])
     epoll_add(listen_fd, &ev);
 
     struct epoll_event epevList[MAXEVENTS];     // 存放epoll_wait返回的事件
+    int64_t epoll_timeout = -1;                     // 利用epoll_wait实现定时器
     while(true)
     {
-        int events_num = epoll_wait(epollFd, epevList, MAXEVENTS, -1);
+        int events_num = epoll_wait(epollFd, epevList, MAXEVENTS, epoll_timeout);
         // EINTR中断不算错误, 比如被信号中断
         if(events_num == -1 && errno != EINTR)
         {
             perror("epoll_wait");
             break;
         }
-        // 检查返回的所有活跃事件
-        for(int i = 0; i < events_num; ++i)
+        else if(events_num == 0)
+            timerQueue.takeAllTimeout();
+        else
         {
-            if(epevList[i].data.fd == listen_fd)
-            {// 监听socket触发
-                if(-1 == acceptConnection(listen_fd, resPath))
-                    perror("acceptConn");
-            }
-            else
-            {// 客户端socket触发
-                httpData* data = (httpData*) epevList[i].data.ptr;
-                if(epevList[i].events & EPOLLIN)
-                {
-                    // 添加任务之前把指针断开
-                    Timer* p = data->timer;
-                    data->timer = nullptr;
-                    p->data = nullptr;
-                    if(pool.addTask(threadPool_task{task, data}) < 0)
-                    {
-                        printf("任务添加失败, 任务队列满了!\n");
-                        return -1;
-                    }
-                    else
-                    {
+            for(int i = 0; i < events_num; ++i)
+            {
+                if(epevList[i].data.fd == listen_fd)
+                {// 监听socket触发
+                    struct sockaddr_in clientAddr;
+                    socklen_t socklen = sizeof(clientAddr);
+                    int fd = -1;
+                    // 由于是边缘触发, listen_fd读就绪时, 可能有多个请求到达.
+                    while((fd = accept(listen_fd, (struct sockaddr* )&clientAddr, &socklen)) > -1){
+                        setNonBlock(fd);
+                        httpData* data = new httpData(fd, resPath);
+                        struct epoll_event ev;
+                        ev.data.ptr = data;
+                        ev.events = EPOLLET | EPOLLIN | EPOLLONESHOT;
+                        epoll_add(fd, &ev);
+                        // 绑定一个计时器, 回调函数的任务就是 delete httpdata
+                        data->timer = timerQueue.addTimer(TIMEOUT, [data,&ev](){
+                            epoll_del(data->getFd(), &ev);
+                            close(data->getFd());
+                            delete data;
+                        });
                     }
                 }
-                else if(epevList[i].events & EPOLLERR)
-                    printf("EPOLLERR!\n");
-                else if(epevList[i].events & EPOLLHUP)
-                    printf("EPOLLHUP!\n");
+                else
+                {// 客户端socket触发
+                    httpData* data = (httpData*) epevList[i].data.ptr;
+                    if(epevList[i].events & EPOLLIN)
+                    {// 添加任务时断开计时器
+                        data->timer->cancel();// 取消timer的任务
+                        data->timer = nullptr;
+                        if(pool.addTask(threadPool_task{task, data}) < 0)
+                        {
+                            printf("任务添加失败, 任务队列满了!\n");
+                            break;
+                        }
+                    }
+                    else if(epevList[i].events & EPOLLERR)
+                        printf("EPOLLERR!\n");
+                    else if(epevList[i].events & EPOLLHUP)
+                        printf("EPOLLHUP!\n");
+                }
             }
         }
-        // 处理超时连接
-        // timerlist.tick();
-        struct timeval now;
-        gettimeofday(&now, nullptr);
-        long long val = (long long)now.tv_sec * 1000 + (long long)now.tv_usec / 1000;
-        Lock();
-        while(!timerList.empty())
-        {
-            Timer* tim = timerList.front();
-            if(tim->expiredTime >= val)
-                timerList.pop_front();
-            if(tim->data == nullptr)
-                timerList.pop_front();
+        epoll_timeout = timerQueue.getMinTO();
+        if(epoll_timeout < -1)
+        {// 已经有定时器到期了
+            timerQueue.takeAllTimeout();
+            epoll_timeout = timerQueue.getMinTO();
         }
     }
     return 0;
@@ -157,36 +161,30 @@ int main(int argc, char* argv[])
 void task(void *arg)
 {
     if(arg == nullptr)
-        exit(-1);
+        exit(-1);// 线程中使用, 整个进程直接退出
     httpData* data = (httpData*)arg;
     ParseRequest ret = data->handleRequest();
-    if(ret == ParseRequest::FINISH || ret == ParseRequest::ERROR)
-        delete data;
-}
 
-// 处理连接请求
-int acceptConnection(int listen_fd, const string& resPath)
-{
-    struct sockaddr_in clientAddr;
-    socklen_t socklen = sizeof(clientAddr);
-    int fd = -1;
-    // 由于是边缘触发, listen_fd读就绪时, 可能有多个请求到达.
-    while((fd = accept(listen_fd, (struct sockaddr* )&clientAddr, &socklen)) > -1){
-        setNonBlock(fd);
-        httpData* httpdata = new httpData(fd, TIMEOUT, resPath);
-        Timer* timer = new Timer(TIMEOUT);
-        // 指针互指
-        httpdata->timer = timer;
-        timer->data = httpdata;
+    struct epoll_event ev;
+    ev.data.ptr = data;
+    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
 
-        struct epoll_event ev;
-        ev.data.ptr = httpdata;
-        ev.events = EPOLLET | EPOLLIN | EPOLLONESHOT;
-        epoll_add(fd, &ev);
-
-        // 添加计时器
-        Lock();
-        timerList.push_back(timer);
+    if(ret == ParseRequest::KEEPALIVE)
+    {// 是长连接, 重置
+        data->reset();
+        // 重新添加计时器和回调函数
+        data->timer = timerQueue.addTimer(TIMEOUT, [data, &ev](){
+            epoll_del(data->getFd(), &ev);
+            close(data->getFd());
+            delete data;
+        });
+        // 先添加定时器在激活, 否则可能激活EPOLLONESHOR, 马上就触发了, timer还没加上去
+        epoll_mod(data->getFd(), &ev);        // 重新激活EPOLLONESHOT
     }
-    return 0;
+    if(ret == ParseRequest::FINISH || ret == ParseRequest::ERROR)
+    {//不能放到timer回调中,必须马上epoll_del, 否则回调还没做, 可能又触发了
+        epoll_del(data->getFd(), &ev);
+        close(data->getFd());
+        delete data;
+    }
 }

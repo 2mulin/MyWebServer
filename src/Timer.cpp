@@ -1,37 +1,89 @@
 /***********************************************************
  *@author RedDragon
  *@date 2021/2/28
- *@brief 
+ *@brief
+ * 使用gettimeofday()实现的毫秒级定时器.
 ***********************************************************/
-
 #include "Timer.h"
-#include <sys/time.h>
-#include <cstdio>
+#include "util.h"
 
-Timer::Timer()
-    : Timer(0)
-{}
+// Timer的实现
 
-Timer::Timer(long long timeout)
-    :data(nullptr),next(nullptr), prev(nullptr)
+Timer::Timer(uint64_t ms)
+    : timeout(ms)
 {
-    struct timeval tv;
-    int ret = gettimeofday(&tv, nullptr);
-    if(ret == -1)
-        perror("gettimeofday");
-    expiredTime = timeout + (long long)tv.tv_sec * 1000 + (long long)tv.tv_usec / 1000;
+    timeout += getMilliSecond();
+}
+
+Timer::Timer(uint64_t ms, std::function<void()> cb)
+    :timeout(ms), callBack(cb)
+{
+    timeout += getMilliSecond();
 }
 
 Timer::~Timer()
 {}
 
-// 更新到期时间
-void Timer::update(long long timeout)
+void Timer::cancel()
 {
-    struct timeval tv;
-    int ret = gettimeofday(&tv, nullptr);
-    if(ret == -1)
-        perror("gettimeofday");
-    expiredTime = timeout + (long long)tv.tv_sec * 1000 + (long long)tv.tv_usec / 1000;
+    if(callBack)
+        callBack = nullptr;
 }
 
+// TimerManager的实现
+
+TimerManager::TimerManager()
+{}
+// 析构时删除所有timer
+TimerManager::~TimerManager()
+{
+    WriteScopedLockImpl<RWLock> writeLock(lock);
+    while(!Sequence.empty())
+    {
+        Timer* p = Sequence.top();
+        delete p;
+        Sequence.pop();
+    }
+}
+
+// 复杂度O(lgN)
+Timer* TimerManager::addTimer(uint64_t ms, std::function<void()>&& cb)
+{
+    Timer* p = new Timer(ms, cb);
+    WriteScopedLockImpl<RWLock> wirteLock(lock);
+    Sequence.push(p);
+    return p;
+}
+
+// 由于堆只能删除栈顶元素, 所以这里使用延迟删除, 就是只有前面的
+// 可以删除, 才会真正删除, 否则先取消计时器, 等待删除
+void TimerManager::delTimer(Timer* p)
+{
+    WriteScopedLockImpl<RWLock> writeLock(lock);
+    p->cancel();
+}
+
+// 执行所有超时事件
+void TimerManager::takeAllTimeout()
+{
+    uint64_t now = getMilliSecond();
+    WriteScopedLockImpl<RWLock> writeLock(lock);
+    printf("执行清理, 还剩%lu个元素\n", Sequence.size());
+    while(!Sequence.empty() && Sequence.top()->getTimeOut() < now)
+    {
+        Timer* p = Sequence.top();
+        // 因为有些定时器是延迟删除, 所以会出现callback是null的定时器
+        if(p->callBack != nullptr)
+            p->callBack();// 执行定时任务
+        Sequence.pop();
+    }
+}
+
+// 最小到期时间还剩多久
+int64_t TimerManager::getMinTO()
+{
+    ReadScopedLockImpl<RWLock> readLock(lock);
+    if(Sequence.empty())
+        return -1;
+    return Sequence.top()->getTimeOut() - getMilliSecond();
+}
