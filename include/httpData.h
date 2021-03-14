@@ -15,11 +15,12 @@ using std::unordered_map;
 
 // 解析http request报文的状态
 enum class ParseRequest{
-    PARSE_STARTLINE,// 首行(请求行)
-    PARSE_HEADERS,  // 头部字段
-    PARSE_BODY,     // 主体数据
-    SendResponse,   // 发送响应
-    FINISH,          // 完成
+    PARSESTARTLINE,// 首行(请求行)
+    PARSEHEADERS,  // 头部字段
+    PARSEBODY,     // 主体数据
+    SENDRESPONE,   // 发送响应
+    KEEPALIVE,      // 长连接
+    FINISH,         // 完成
     ERROR
 };
 
@@ -58,7 +59,6 @@ class httpData
 {
 private:
     int againTime;          // 重复尝试readn的次数
-    long long TIMEOUT;      // 超时时间
     int clientFd;           // 客户端fd
     string content;         // readn()读到的内容(也就是请求报文的所有内容)
     httpMethod method;      // 此次请求的方法
@@ -83,12 +83,11 @@ private:
     void handleError(int statusCode, std::string short_msg);
 
 public:
-    Timer* timer;// epoll
+    Timer* timer;
 
     httpData();
-    httpData(int cfd, long long timeout, string resPath);
+    httpData(int cfd, string resPath);
     ~httpData();
-    ParseRequest getParseStatus()const {return parseState;}
     int getFd()const {return clientFd;}
     ParseRequest handleRequest();// 解析http请求的 起点
     void reset();

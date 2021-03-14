@@ -5,46 +5,35 @@
  * 支持GET, POST
 ***********************************************************/
 #include "httpData.h"
-#include "Lock.h"
 #include "util.h"
-#include "timerList.h"
+#include "Timer.h"
 
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
-
-#include <opencv/cv.h>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/opencv.hpp>
+#include <cstring>
 
 using namespace std;
 // 对EAGAIN这样的错误尝试超过一定的次数就抛弃
 const int AGAIN_MAX_TIMES = 5;
-#include <queue>
-extern std::list<Timer*> timerList;  // 所有客户端连接
+extern const uint64_t TIMEOUT = 30000; // 要设置和main.cpp中的一样
+extern TimerManager timerQueue;    // 所有计时器
 
 httpData::httpData()
-    : httpData(-1, 0,"/")
+    : httpData(-1, "/")
 {}
 
 // 初始化列表的顺序必须和class的变量申明顺序一致
-httpData::httpData(int cfd, long long timeout, string resource)
-        : againTime(0),TIMEOUT(timeout),clientFd(cfd),
+httpData::httpData(int cfd, string resource)
+        : againTime(0),clientFd(cfd),
           method(httpMethod::ERROR),h_major(-1), h_minor(-1),
-          parseState(ParseRequest::PARSE_STARTLINE),isKeepAlive(false),
+          parseState(ParseRequest::PARSESTARTLINE),isKeepAlive(false),
           resPath(resource), timer(nullptr)
 {}
 
 httpData::~httpData()
-{
-    struct epoll_event ev;
-    ev.data.ptr = this;
-    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-    epoll_del(clientFd, &ev);
-    close(clientFd);
-}
+{}
 
 ParseResult httpData::parse_StartLine()
 {
@@ -54,9 +43,9 @@ ParseResult httpData::parse_StartLine()
     // 得到请求行
     string request_line = content.substr(0 ,pos);
     content.erase(0, pos + 2);// \r\n可以删除了
-    // 分析请求行
 
-    // 得到http method
+    // 分析请求行
+    // http method
     string md;
     size_t i = 0;
     while(i < request_line.size() && request_line[i] != ' ')
@@ -65,10 +54,12 @@ ParseResult httpData::parse_StartLine()
         method = httpMethod::GET;
     else if(md == "POST")
         method = httpMethod::POST;
+    else if(md == "HEAD")
+        method = httpMethod::HEAD;
     else
         return ParseResult::ERROR;
 
-    // 得到url
+    // url
     url = resPath;
     if(i == request_line.size())
         return ParseResult::ERROR;
@@ -85,8 +76,7 @@ ParseResult httpData::parse_StartLine()
     if(url.back() == '/')
         url += "index.html";
 
-    // 得到HTTP版本号
-    // 空格HTTP/1.1 总共8个字符
+    // HTTP版本号
     string ver = request_line.substr(i + 1);
     if(ver.size() != 8)
         return ParseResult::ERROR;
@@ -129,7 +119,7 @@ ParseResult httpData::parse_Headers()
 ParseResult httpData::parse_Body()
 {
     // 首先确定有没有body
-    auto item = headerMap.find("Content-length");
+    auto item = headerMap.find("Content-Length");
     if(item == headerMap.end())
         return ParseResult::ERROR;
     size_t len = stoi(item->second);
@@ -143,12 +133,17 @@ SendResult httpData::sendResponse()
 {
     char send_header[4096] = "HTTP/1.1 200 OK\r\n";
     // 长连接
-    // keep-alive写成keep_alive导致设置长连接失败, 我真是个人才, 注意格式
+    // keep-alive写成keep_alive导致设置长连接失败,注意格式
     if(headerMap.find("Connection") != headerMap.end() && headerMap["Connection"] == "keep-alive")
     {
         this->isKeepAlive = true;
-        sprintf(send_header, "%sConnection: Keep-Alive\r\n", send_header);
-        sprintf(send_header, "%sKeep-Alive: timeout=%llu\r\n", send_header, TIMEOUT/1000);
+        sprintf(send_header, "%sConnection: keep-alive\r\n", send_header);
+        sprintf(send_header, "%sKeep-Alive: timeout=%lu\r\n", send_header, TIMEOUT/1000);
+    }
+    else
+    {
+        this->isKeepAlive = false;
+        sprintf(send_header, "%sConnection: close\r\n", send_header);
     }
 
     // 处理GET和POST
@@ -157,9 +152,8 @@ SendResult httpData::sendResponse()
         char send_content[4096] = "I have recv this!";
         sprintf(send_header, "%sContent-Type: text/plain\r\n", send_header);
         sprintf(send_header, "%sContent-Length: %zu\r\n", send_header, strlen(send_content));
-
         // 加上空行
-        sprintf(send_header, "%s\r\n", send_header);
+        sprintf(send_header, "%s\r\n%s", send_header, send_content);
         // 发送头部
         int sendLen = writen(clientFd, send_header, strlen(send_header));
         if((size_t)sendLen != strlen(send_header))
@@ -169,14 +163,9 @@ SendResult httpData::sendResponse()
         sendLen = writen(clientFd, send_content, strlen(send_content));
         if((size_t)sendLen != strlen(send_content))
             return SendResult::ERROR;
-        printf("成功发送POST响应! 发送长度: %zu\n", strlen(send_content));
-
-        // 解码 body, 生成图片
-        vector<char> data(content.begin(), content.end());
-        cv::Mat test = cv::imdecode(data, CV_LOAD_IMAGE_COLOR | CV_LOAD_IMAGE_ANYDEPTH);
-        cv::imwrite("recv.bmp", test);
+        printf("成功接收POST请求! 内容: %s\n", content.data());
     }
-    else if(method == httpMethod::GET)
+    else if(method == httpMethod::GET || method == httpMethod::HEAD)
     {
         size_t dot_pos = url.find('.');
         string fileType;
@@ -199,11 +188,14 @@ SendResult httpData::sendResponse()
         size_t send_len = writen(clientFd, send_header, strlen(send_header));
         if(send_len != strlen(send_header))
             return SendResult::ERROR;
-        // 发送body, 也就是发送文件内容
-        int fd = open(url.data(), O_RDONLY);
-        int ret = sendfile(clientFd, fd, nullptr, statbuf.st_size);
-        if(ret != statbuf.st_size)
-            return SendResult::ERROR;
+        // 如果是HEAD请求的话,只要发送头部
+        if(method == httpMethod::GET)
+        {// 发送body, 也就是发送文件内容
+            int fd = open(url.data(), O_RDONLY);
+            int ret = sendfile(clientFd, fd, nullptr, statbuf.st_size);
+            if (ret != statbuf.st_size)
+                return SendResult::ERROR;
+        }
     }
     else
     {
@@ -249,7 +241,7 @@ ParseRequest httpData::handleRequest()
             content += std::string(buf, buf + readSum);
 
         // 状态机解析
-        if(this->parseState == ParseRequest::PARSE_STARTLINE)
+        if(this->parseState == ParseRequest::PARSESTARTLINE)
         {// 处于解析请求头的状态
             ParseResult flag = parse_StartLine();
             if(flag == ParseResult::AGAIN)
@@ -260,10 +252,10 @@ ParseRequest httpData::handleRequest()
                 break;
             }
             else
-                parseState = ParseRequest::PARSE_HEADERS;
+                parseState = ParseRequest::PARSEHEADERS;
         }
         // 解析头部字段
-        if(this->parseState == ParseRequest::PARSE_HEADERS)
+        if(this->parseState == ParseRequest::PARSEHEADERS)
         {
             ParseResult flag = parse_Headers();
             if(flag == ParseResult::AGAIN)
@@ -275,14 +267,14 @@ ParseRequest httpData::handleRequest()
             }
             else
             {// get请求也可以有body数据, 但是通常不建议
-                if (method == httpMethod::POST)
-                    parseState = ParseRequest::PARSE_BODY;
+                if(method == httpMethod::POST)
+                    parseState = ParseRequest::PARSEBODY;
                 else
-                    parseState = ParseRequest::SendResponse;
+                    parseState = ParseRequest::SENDRESPONE;
             }
         }
         // 解析body
-        if(this->parseState == ParseRequest::PARSE_BODY)
+        if(this->parseState == ParseRequest::PARSEBODY)
         {
             ParseResult flag = parse_Body();
             if(flag == ParseResult::AGAIN)
@@ -293,10 +285,10 @@ ParseRequest httpData::handleRequest()
                 break;
             }
             else
-                parseState = ParseRequest::SendResponse;
+                parseState = ParseRequest::SENDRESPONE;
         }
         // 分析请求
-        if(this->parseState == ParseRequest::SendResponse)
+        if(this->parseState == ParseRequest::SENDRESPONE)
         {
             SendResult flag = sendResponse();
             switch (flag)
@@ -322,22 +314,7 @@ ParseRequest httpData::handleRequest()
     if(isError)
         return ParseRequest::ERROR;
     if(isKeepAlive)
-    {// 是长连接, 重置
-        reset();
-        // 重新添加计时器
-        Timer* itimer = new Timer(TIMEOUT);
-        this->timer = itimer;
-        {
-            Lock();
-            timerList.push_back(itimer);
-        }
-        // 重新激活EPOLLONESHOT
-        struct epoll_event ev;
-        ev.data.ptr = this;// 这里有风险, 可能在任务执行完之后, timer已经被删了
-        ev.events = EPOLLET | EPOLLIN | EPOLLONESHOT;
-        epoll_mod(clientFd, &ev);
-    }
-    this->parseState = ParseRequest::FINISH;
+        return ParseRequest::KEEPALIVE;
     return parseState;
 }
 
@@ -369,7 +346,7 @@ void httpData::reset()
     againTime = 0;
     content.clear();
     method = httpMethod::ERROR;
-    parseState = ParseRequest::PARSE_STARTLINE;
+    parseState = ParseRequest::PARSESTARTLINE;
     url.clear();
     this->h_major = this->h_minor = -1;
     headerMap.clear();
