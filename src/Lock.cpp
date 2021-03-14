@@ -26,23 +26,23 @@ void Mutex::unlock()
 }
 
 
-rwLock::rwLock()
+RWLock::RWLock()
 {
     pthread_rwlock_init(&lock, nullptr);
 }
-rwLock::~rwLock()
+RWLock::~RWLock()
 {
     pthread_rwlock_destroy(&lock);
 }
-void rwLock::readLock()
+void RWLock::readLock()
 {
     pthread_rwlock_wrlock(&lock);
 }
-void rwLock::writeLock()
+void RWLock::writeLock()
 {
     pthread_rwlock_wrlock(&lock);
 }
-void rwLock::unlock()
+void RWLock::unlock()
 {
     pthread_rwlock_unlock(&lock);
 }
