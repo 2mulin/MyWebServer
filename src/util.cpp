@@ -8,19 +8,20 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
 
-void handlerForSIGPIPE()
+void setSigIgn(int sig)
 {
     struct sigaction act;
     act.sa_flags = 0;
     act.sa_handler = SIG_IGN;
     sigfillset(&act.sa_mask);// 信号处理函数执行时, 阻塞所有信号
-    if(-1 == sigaction(SIGPIPE, &act, nullptr))
+    if(-1 == sigaction(sig, &act, nullptr))
         perror("sigaction");
 }
 
@@ -149,4 +150,11 @@ int writen(int fd, const char *buf, size_t size)
         }
     }
     return total;
+}
+
+uint64_t getMilliSecond()
+{
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    return tv.tv_sec * 1000ul + tv.tv_usec / 1000;
 }
