@@ -19,8 +19,8 @@ enum class ParseRequest{
     PARSEHEADERS,  // 头部字段
     PARSEBODY,     // 主体数据
     SENDRESPONE,   // 发送响应
-    KEEPALIVE,      // 长连接
-    FINISH,         // 完成
+    KEEPALIVE,     // 长连接
+    FINISH,        // 完成
     ERROR
 };
 

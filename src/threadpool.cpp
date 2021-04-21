@@ -10,152 +10,171 @@
  * worker是消费者
 *************************************************************************************/
 #include "threadpool.h"
-#include <stdexcept>
 #include <cstring>
 
-// 唯一单例
-threadPool threadPool::pool;
-
 // 消费者线程
-void* threadPool::worker(void *arg)
+void* threadPool::worker(void* arg)
 {
-    if(arg != nullptr)
-        arg = nullptr;
+    if(arg == nullptr)
+        return nullptr;
+    threadPool* pool = (threadPool*)arg;
     for(;;)
     {
-        pthread_mutex_lock(&pool.mtx);
-        while (pool.taskCount <= 0 && !pool.shutdown)
-        {// 没有任务就阻塞, 等待任务
-            pthread_cond_wait(&pool.cond, &pool.mtx);
-        }
-        if(pool.shutdown == immediate_shutdown)
+        int err = pthread_mutex_lock(pool->mtx);
+        if(err != 0)
+        {
+            printf("errno = %d: %s", err, strerror(err));
             break;
-        if(pool.shutdown == graceful_shutdown && pool.taskCount == 0)
-            break;// 优雅关闭, 任务做完才关闭
+        }
 
-        struct threadPool_task t1 = pool.taskQueue[pool.begin];
-        pool.begin = (pool.begin + 1) % pool.queueSize;
-        --pool.taskCount;
-
-        pthread_mutex_unlock(&pool.mtx);
-        // 执行真正的任务
-        (*t1.function)(t1.argument);
+        while (pool->taskCount <= 0)
+            pthread_cond_wait(pool->cond, pool->mtx);
+        // 拿到任务
+        Task tk = pool->taskQueue[pool->begin];
+        pool->begin += 1;
+        pool->taskCount -= 1;
+        err = pthread_mutex_unlock(pool->mtx);
+        if(err != 0)
+        {
+            printf("errno = %d: %s", err, strerror(err));
+            break;
+        }
+        // 执行任务
+        tk.func(tk.arg);
     }
-    --pool.threadCount;
-    pthread_mutex_unlock(&pool.mtx);
-    pthread_exit(nullptr);// 线程退出
+    return nullptr;
 }
 
-// 公有成员函数
-threadPool::threadPool()
-    : threadPool(THREAD_COUNT , QUEUE_SIZE)
-{}
-
-threadPool::threadPool(int count, int queue_size)
+/*
+ * @brief: 创建count个工作线程
+ * @return 成功创建的线程数
+ */
+int threadPool::createThread(int count)
 {
-    pthread_mutex_init(&mtx, nullptr);
-    pthread_cond_init(&cond, nullptr);
-    tidArr = new pthread_t[count];
-    queueSize = queue_size;
-    taskQueue = new threadPool_task[queue_size];
-    threadCount = 0;
-    for(int i = 0; i < count; ++i){
-        int ret = pthread_create(&tidArr[i], nullptr, worker, nullptr);
+    int old = threadCount;
+    for(int i = 0; i < count; ++i)
+    {
+        pthread_t newTid;
+        int ret = pthread_create(&newTid, nullptr, worker, this);
         if(ret != 0)
         {// 内存等资源不够, 可能创建线程失败
             printf("errno=%d: %s\n",ret, strerror(ret));
-            pthread_mutex_destroy(&mtx);
-            pthread_cond_destroy(&cond);
-            delete tidArr;
-            delete taskQueue;
-            // 创建线程失败, 提前终止
-            throw std::runtime_error("1. 检查内存是否足够, 2. 检查参数是否正确, 如attr是否初始化\n");
+            break;
         }
         else
+        {
+            printf("创建线程成功!\n");
+            tidVec.push_back(newTid);
             threadCount++;
+        }
     }
+    return threadCount - old;
+}
+
+// 构造函数(线程数初始为4)
+threadPool::threadPool()
+    : threadPool(0)
+{}
+
+threadPool::threadPool(int count)
+{
+    mtx = new pthread_mutex_t;
+    cond = new pthread_cond_t;
+    pthread_mutex_init(mtx, nullptr);
+    pthread_cond_init(cond, nullptr);
+
+    coreThreadCount = count;
+    threadCount = 0;
+
+    taskQueue = new Task[QUEUE_SIZE];
+
     begin = end = taskCount = 0;
     shutdown = false;
 }
+
 threadPool::~threadPool()
 {
     // 如果线程还在运行, 就join
-    if(!shutdown)
-        joinAll(THREADPOOL_GRACEFUL);
-    pthread_mutex_destroy(&mtx);
-    pthread_cond_destroy(&cond);
-    delete tidArr;
-    delete taskQueue;
+//    if(!shutdown)
+//        joinAll(THREADPOOL_GRACEFUL);
+    pthread_mutex_destroy(mtx);
+    pthread_cond_destroy(cond);
+    delete mtx;
+    delete cond;
+    delete[] taskQueue;
 }
 
-int threadPool::addTask(struct threadPool_task tk)
+ThreadPoolStatus threadPool::addTask(Task tk)
 {
-    if(tk.function == nullptr)
-        return THREADPOOL_INVALID;
-    int ret = pthread_mutex_lock(&mtx); // 加锁
+    int ret = pthread_mutex_lock(mtx); // 加锁
     if(ret != 0)
     {
         printf("%s\n", strerror(ret));
-        return THREADPOOL_LOCK_FAILURE;
+        return ThreadPoolStatus::LOCK_FAILURE;
     }
 
-    int next = (end + 1)%queueSize;
-    int err = 0;
+    int next = (end + 1)%QUEUE_SIZE;
+    ThreadPoolStatus err;
     do{
-        if(taskCount == queueSize){
-            err = THREADPOOL_QUEUE_FULL;
+        if(taskCount == QUEUE_SIZE){
+            err = ThreadPoolStatus::QUEUE_FULL;
             break;
         }
         if(shutdown){
-            err = THREADPOOL_SHUTDOWN;
+            err = ThreadPoolStatus::SHUTDOWN;
             break;
         }
+        // 创建线程
+        if(threadCount < maxThreadCount)
+            createThread(1);
+        // 增加任务
         taskQueue[end] = tk;
         ++taskCount;
         end = next;
-        ret = pthread_cond_signal(&cond);
+        // 通知工作线程
+        ret = pthread_cond_signal(cond);
         if(ret != 0)
-            err = THREADPOOL_LOCK_FAILURE;
+            err = ThreadPoolStatus::LOCK_FAILURE;
     }while(false);
 
-    ret = pthread_mutex_unlock(&mtx);// 解锁
+    ret = pthread_mutex_unlock(mtx);// 解锁
     if(ret != 0)
     {
         printf("%s\n", strerror(ret));
-        return THREADPOOL_LOCK_FAILURE;
+        return ThreadPoolStatus::LOCK_FAILURE;
     }
     return err;
 }
 
-int threadPool::joinAll(int flags)
+ThreadPoolStatus threadPool::joinAll()
 {
-    int ret = pthread_mutex_lock(&mtx);
+    int ret = pthread_mutex_lock(mtx);
     if(ret != 0)
-        return THREADPOOL_LOCK_FAILURE;
-    int err = 0;
+        return ThreadPoolStatus::LOCK_FAILURE;
+    ThreadPoolStatus err;
     do{
         if(shutdown){
-            err = THREADPOOL_SHUTDOWN;
+            err = ThreadPoolStatus::SHUTDOWN;
             break;
         }
-        // 根据flag选择关闭的方式
-        shutdown = flags & THREADPOOL_GRACEFUL ? graceful_shutdown : immediate_shutdown;
-        // 唤醒所有线程, 所有线程都会退出, 因为shutdown被改变了, 不会再满足while了
-        ret = pthread_cond_broadcast(&cond);
+        // 唤醒所有线程, 所有线程都会退出
+        ret = pthread_cond_broadcast(cond);
         if(ret != 0)
-            err = THREADPOOL_LOCK_FAILURE;
-        ret = pthread_mutex_unlock(&mtx);
+            err = ThreadPoolStatus::LOCK_FAILURE;
+        ret = pthread_mutex_unlock(mtx);
         if(ret != 0)
-            err = THREADPOOL_LOCK_FAILURE;
+            err = ThreadPoolStatus::LOCK_FAILURE;
 
         for(int i = 0; i < threadCount; ++i)
         {
-            ret = pthread_join(tidArr[i], nullptr);
+            ret = pthread_join(tidVec.back(), nullptr);
             if(ret != 0)
-                err = THREADPOOL_JOIN_FAILURE;
+                err = ThreadPoolStatus::LOCK_FAILURE;
             --threadCount;
+            tidVec.pop_back();
         }
-    }while(false);
+        shutdown = true;
 
+    }while(false);
     return err;
 }

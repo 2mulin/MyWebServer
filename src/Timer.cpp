@@ -66,8 +66,8 @@ void TimerManager::delTimer(Timer* p)
 // 执行所有超时事件
 void TimerManager::takeAllTimeout()
 {
-    uint64_t now = getMilliSecond();
     WriteScopedLockImpl<RWLock> writeLock(lock);
+    uint64_t now = getMilliSecond();
     printf("执行清理, 还剩%lu个元素\n", Sequence.size());
     while(!Sequence.empty() && Sequence.top()->getTimeOut() < now)
     {

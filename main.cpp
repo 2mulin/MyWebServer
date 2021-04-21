@@ -20,14 +20,6 @@ void task(void *arg);
 
 int main(int argc, char* argv[])
 {
-    // 线程池初始化(静态变量)
-    try
-    {}
-    catch (const std::runtime_error& error)
-    {
-        printf("%s\n", error.what());
-        return -1;
-    }
     int PORT = 23456;           // 默认端口号
     char buf[128] = {0};        // 默认资源文件目录
     getcwd(buf, sizeof(buf));
@@ -79,8 +71,9 @@ int main(int argc, char* argv[])
         return -1;
     }
     // 线程池初始化
-    threadPool& pool = threadPool::getInstance();
+    threadPool pool;
     printf("创建线程池成功!\n");
+
     // 获取epoll实例
     epollFd = epoll_init();
     // 添加listen_fd到epoll实例中去
@@ -89,7 +82,7 @@ int main(int argc, char* argv[])
     ev.events = EPOLLIN | EPOLLET;
     epoll_add(listen_fd, &ev);
 
-    struct epoll_event epevList[MAXEVENTS];     // 存放epoll_wait返回的事件
+    struct epoll_event epevList[MAXEVENTS];         // 存放epoll_wait返回的事件
     int64_t epoll_timeout = -1;                     // 利用epoll_wait实现定时器
     while(true)
     {
@@ -134,10 +127,20 @@ int main(int argc, char* argv[])
                     {// 添加任务时断开计时器
                         data->timer->cancel();// 取消timer的任务
                         data->timer = nullptr;
-                        if(pool.addTask(threadPool_task{task, data}) < 0)
+                        struct Task tk{task, data};
+                        switch(pool.addTask(tk))
                         {
-                            printf("任务添加失败, 任务队列满了!\n");
-                            break;
+                            case ThreadPoolStatus::LOCK_FAILURE:
+                                printf("mutex或cond错误!\n");
+                                break;
+                            case ThreadPoolStatus::QUEUE_FULL:
+                                printf("任务队列满了!\n");
+                                break;
+                            case ThreadPoolStatus::SHUTDOWN:
+                                printf("线程池已关闭!\n");
+                                break;
+                            default:
+                                break;// 任务添加成功
                         }
                     }
                     else if(epevList[i].events & EPOLLERR)
@@ -178,11 +181,11 @@ void task(void *arg)
             close(data->getFd());
             delete data;
         });
-        // 先添加定时器在激活, 否则可能激活EPOLLONESHOR, 马上就触发了, timer还没加上去
+        // 先添加定时器在激活, 否则可能激活EPOLLONESHOT, 马上就触发了, timer还没加上去
         epoll_mod(data->getFd(), &ev);        // 重新激活EPOLLONESHOT
     }
     if(ret == ParseRequest::FINISH || ret == ParseRequest::ERROR)
-    {//不能放到timer回调中,必须马上epoll_del, 否则回调还没做, 可能又触发了
+    {//不能放到timer回调中,必须马上epoll_del, 否则回调还没执行, 可能又触发了
         epoll_del(data->getFd(), &ev);
         close(data->getFd());
         delete data;

@@ -1,78 +1,64 @@
 /***********************************************************
  *@author RedDragon
- *@date 2020/9/5
+ *@date 2021/3/23
  *@brief 线程池
- * 本来是static threadPool对象, 现在改成了static threadPool指针
- * 因为这里对象不好设置为饿汉式, 因为饿汉式要把static threadPool
- * 对象放在getInstance()函数才是饿汉式, 但是那样的话, 其他成员函数就
- * 无法访问单例对象了, 所以这里设置成指针, 初始化为nullptr.等到第一次调用
- * getInstance就会对指针初始化.
+ * 任务队列使用new出来的数组实现, 轮流选取
+ * 使用消费者生产者模型
+ * 最开始线程数为0, 随着任务的添加,开始创建线程,
+ * 当线程数目大于maxThreadCount时,线程不再创建
+ * 当空闲时, 逐渐删除线程, 只留下核心线程
 ***********************************************************/
 
 #ifndef WEBSERVER_THREADPOOL_H
 #define WEBSERVER_THREADPOOL_H
 #include <pthread.h>
+#include <vector>
+#include <functional>
+using std::function;
+using std::vector;
 
-const int THREAD_COUNT = 4;     // 固定线程数
-const int QUEUE_SIZE = 65535;   // 任务队列大小
-
-const int THREADPOOL_INVALID = -1;      // 任务参数不合法
-const int THREADPOOL_LOCK_FAILURE = -2; // pthread_mutex_lock或unlock调用失败
-const int THREADPOOL_QUEUE_FULL = -3;   // 任务队列满
-const int THREADPOOL_SHUTDOWN = -4;     // 表示线程池已经关闭
-const int THREADPOOL_JOIN_FAILURE = -5; // join线程失败
-
-const int THREADPOOL_GRACEFUL = 1;      // 优雅关闭线程池
-
-//const int MAX_THREAD_COUNT = 1024;// 一个线程池的线程数最大限制为1024
-//const int MAX_QUEUE = 65535; // 一个任务队列最大任务数量限制
-
-enum threadPool_shutdown_t
-{
-    immediate_shutdown = 1, // 立即
-    graceful_shutdown  = 2  // 优雅关闭
+enum class ThreadPoolStatus{
+    LOCK_FAILURE,
+    QUEUE_FULL,
+    SHUTDOWN
 };
 
-struct threadPool_task
+struct Task
 {
-    void (*function)(void*);    // 函数指针指向执行任务的函数
-    void *argument;             // 传递给函数的参数
+    function<void(void*)> func;
+    void* arg;
 };
 
 class threadPool
 {
+    const int maxThreadCount = 128; // 最大线程数
+    const int QUEUE_SIZE = 20000;   // 任务队列大小
 private:
-    pthread_mutex_t mtx;    // 互斥量
-    pthread_cond_t cond;    // 条件变量，用来通知worker thread
-    pthread_t *tidArr;      // 所有线程ID
-    threadPool_task *taskQueue;        // 任务队列
-    int threadCount;        // 线程数目
-    int queueSize;          // 任务队列大小
+    pthread_mutex_t* mtx;       // 互斥量
+    pthread_cond_t* cond;       // 条件变量，用来通知worker thread
+    vector<pthread_t> tidVec;   // 所有线程ID
+    int threadCount;            // 线程数目
+    int coreThreadCount;        // 核心线程数(线程最少保持这个数目)
+    Task *taskQueue;            // 任务队列
+    int taskCount;              // 任务数
     int begin;
     int end;
-    int taskCount;          // 挂起任务数
-    int shutdown;           // 线程池关闭种类
+    bool shutdown;              // 线程池正在关闭
 
-    static void* worker(void* arg);
-    // 私有化构造函数
-    threadPool() noexcept(false);
-    threadPool(int thread_count, int queue_size) noexcept(false);
-    ~threadPool();
-    static threadPool pool; // 唯一的实例
+    static void* worker(void*);
+    int createThread(int count);
 
 public:
+    threadPool() noexcept(false);
+    threadPool(int thread_count);
+    ~threadPool();
     threadPool(const threadPool&) = delete;
-    threadPool(threadPool&&) = delete;
     threadPool& operator=(const threadPool&) = delete;
 
-    // 得到实例
-    static threadPool& getInstance(){
-        return pool;
-    };
     // 添加任务
-    int addTask(struct threadPool_task tk);
+    ThreadPoolStatus addTask(Task);
     // join所有线程
-    int joinAll(int flags);
+    ThreadPoolStatus joinAll();
 };
 
 #endif //WEBSERVER_THREADPOOL_H

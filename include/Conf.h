@@ -3,7 +3,7 @@
  *@date 2021/4/20
  *@brief 配置系统的简单是实现
  * 直接读取conf目录下的server.conf文件.
- * 按照key: value的格式读,直接存粗到哈希表中.
+ * 按照key: value的格式读,直接存到哈希表中.
 ***********************************************************/
 #ifndef WEBSERVER_CONF_H
 #define WEBSERVER_CONF_H
