@@ -4,18 +4,9 @@ cmake_minimum_required(VERSION 2.8)
 # 项目名
 project(WebServer)
 
-#最开始使用的add_compile_options(),但是不行
-#        -std=c++11            # 指定支持的C++标准
-#        -g                    # 生成debug信息(如果使用-g3会造成调试时行号与实际运行对不上的现象)
-#        -Wall                 # 生成所有警告信息
-#        -Wextra               # 对所有合法但是值得怀疑的表达式进行警告
-#        -lpthread              # 线程支持
-#下面都是opencv的参数
-#        -lopencv_core
-#        -lopencv_imgproc
-#        -lopencv_highgui
+#最开始使用的add_compile_options(),但是无效，版本原因
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -Wall -Wextra -lpthread -lopencv_core -lopencv_imgproc -lopencv_highgui")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -Wall -Wextra -lpthread")
 
 # 将给定的路径添加到编译器搜索包含文件（.h文件）的路径列表中。
 include_directories(include)
