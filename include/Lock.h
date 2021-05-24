@@ -1,29 +1,23 @@
-/***********************************************************
- *@author RedDragon
- *@date 2021/3/2
- *@brief RAII锁
-***********************************************************/
+/**
+ * @author ling
+ * @date 2021/5/23
+ * @brief 简单封装一下pthread_mutex_t，以及实现RAII锁
+ */
 
 #ifndef WEBSERVER_LOCK_H
 #define WEBSERVER_LOCK_H
 
 #include <pthread.h>
+#include <util.h>
 
-class nonCopyAble
-{
-public:
-    nonCopyAble() = default;
-    ~nonCopyAble() = default;
-    // 禁用拷贝
-    nonCopyAble(const nonCopyAble&) = delete;
-    nonCopyAble& operator=(const nonCopyAble&) = delete;
-};
-
-// RAII
-class Mutex : public nonCopyAble
+/**
+ * @brief 简单封装一下pthread_mutex_t这个互斥量。
+ */
+class Mutex : private nonCopyAble
 {
 private:
-    pthread_mutex_t mtx;
+    pthread_mutex_t m_mutex;
+
 public:
     explicit Mutex();
     void lock();
@@ -31,112 +25,82 @@ public:
     ~Mutex();
 };
 
-
-class RWLock: public nonCopyAble
+/**
+ * @brief 局部互斥量，RAII锁的实现。
+ * 构造的时候加锁，析构的时候解锁。还额外提供lock和unlock函数提供灵活性，还能尽量避免重复加锁，解锁。
+ */
+class ScopedLock : private nonCopyAble
 {
 private:
-    pthread_rwlock_t lock;
+    Mutex& m_mutex;
+    bool isLock;
+
 public:
-    explicit RWLock();
-    ~RWLock();
+    explicit ScopedLock(Mutex& mtx);
+    /**
+     * @brief 加锁(若是已经加锁，直接返回)
+     */
+    void lock();
+    /**
+     * @brief 解锁(若是已经解锁，直接返回)
+     */
+    void unlock();
+    ~ScopedLock();
+};
+
+/**
+ * @brief 读写互斥量简单封装
+ */
+class RWMutex: private nonCopyAble
+{
+private:
+    pthread_rwlock_t rwlock;
+
+public:
+    explicit RWMutex();
+    ~RWMutex();
     void readLock();
     void writeLock();
     void unlock();
 };
 
-template<class T>
-struct ReadScopedLockImpl {
-public:
-    /**
-     * @brief 构造函数
-     * @param[in] mutex 读写锁
-     */
-    ReadScopedLockImpl(T& mutex)
-            :m_mutex(mutex) {
-        m_mutex.readLock();
-        m_locked = true;
-    }
-
-    /**
-     * @brief 析构函数,自动释放锁
-     */
-    ~ReadScopedLockImpl() {
-        unlock();
-    }
-
-    /**
-     * @brief 上读锁
-     */
-    void lock() {
-        if(!m_locked) {
-            m_mutex.readLock();
-            m_locked = true;
-        }
-    }
-
-    /**
-     * @brief 释放锁
-     */
-    void unlock() {
-        if(m_locked) {
-            m_mutex.unlock();
-            m_locked = false;
-        }
-    }
+/**
+ * @brief 局部读RAII锁实现
+ */
+class ReadScopedLock : private nonCopyAble
+{
 private:
-    /// mutex
-    T& m_mutex;
-    /// 是否已上锁
-    bool m_locked;
+    RWMutex& mtx;
+    bool isLock;
+
+public:
+    explicit ReadScopedLock(RWMutex& rwMutex);
+    ~ReadScopedLock();
+    /**
+     * @brief 加读锁
+     */
+    void Lock();
+    void unlock();
 };
 
 /**
- * @brief 局部写锁模板实现
+ * @brief 局部写锁RAII实现
  */
-template<class T>
-struct WriteScopedLockImpl {
-public:
-    /**
-     * @brief 构造函数
-     * @param[in] mutex 读写锁
-     */
-    WriteScopedLockImpl(T& mutex)
-            :m_mutex(mutex) {
-        m_mutex.writeLock();
-        m_locked = true;
-    }
-
-    /**
-     * @brief 析构函数
-     */
-    ~WriteScopedLockImpl() {
-        unlock();
-    }
-
-    /**
-     * @brief 上写锁
-     */
-    void lock() {
-        if(!m_locked) {
-            m_mutex.writeLock();
-            m_locked = true;
-        }
-    }
-
-    /**
-     * @brief 解锁
-     */
-    void unlock() {
-        if(m_locked) {
-            m_mutex.unlock();
-            m_locked = false;
-        }
-    }
+class WriteScopedLock : private nonCopyAble
+{
 private:
-    /// Mutex
-    T& m_mutex;
-    /// 是否已上锁
-    bool m_locked;
+    RWMutex& mtx;
+    bool isLock;
+
+public:
+    explicit WriteScopedLock(RWMutex& rwMutex);
+    ~WriteScopedLock();
+    /**
+     * @brief 加写锁
+     */
+     void Lock();
+     void unlock();
 };
+
 
 #endif //WEBSERVER_LOCK_H
