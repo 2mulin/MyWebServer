@@ -1,6 +1,6 @@
 /***********************************************************
  *@author RedDragon
- *@date 2021/4/21
+ *@date 2021/5/25
  *@brief 日志系统
 ***********************************************************/
 
@@ -14,11 +14,13 @@
 #include <fstream>
 #include <sstream>
 
-// 日志级别
+/**
+ * @brief 日志级别
+ */
 class LogLevel
 {
 public:
-    // 级别
+    /// 级别
     enum Level
     {
         DEBUG = 1,
@@ -28,12 +30,14 @@ public:
         FATAL = 5
     };
     /**
-     * @brief 日志级别转化为字符串输出
+     * @brief 日志级别转化为相应字符串
      */
     static std::string ToString(LogLevel::Level level);
 };
 
-// 详细消息
+/**
+ * @brief 日志详细信息
+ */
 class LogInfo
 {
 public:
@@ -60,15 +64,21 @@ public:
     std::string format();
 
 private:
-    LogLevel::Level m_level;            // 日志级别
-    const char* m_fileName = nullptr;   // 文件名
-    uint32_t m_line = 0;                // 行号
-    const char* m_content;              // 详细日志消息
-
-    std::string m_pattern;              // 打印日志的格式
+    /// 日志级别
+    LogLevel::Level m_level;
+    /// 文件名
+    const char* m_fileName = nullptr;
+    /// 行号
+    uint32_t m_line = 0;
+    /// 详细日志消息
+    const char* m_content;
+    /// 打印日志的格式
+    std::string m_pattern;
 };
 
-// 日志输出地址(抽象类)
+/**
+ * @brief 日志输出地址(抽象类)
+ */
 class LogAppender
 {
 public:
@@ -77,36 +87,61 @@ public:
             :m_level(level){}
     virtual ~LogAppender()=default;
 
-    //纯虚函数, 真正执行写日志的地方
+    /**
+     * @brief           纯虚函数, 真正执行写日志的地方
+     * @param level     这条日志的级别
+     * @param logStr    格式化后的日志
+     */
     virtual void log(LogLevel::Level level, std::string logStr) = 0;
 
 protected:
-    LogLevel::Level m_level;        // 可以给定义一个level, 小于level级别日志, 就不写了
+    /// 可以给定义一个m_level, 小于m_level的日志, 该输出地不写
+    LogLevel::Level m_level;
 };
 
-// 输出到控制台
+/**
+ * @brief 输出到控制台
+ */
 class StdOutLogAppender : public LogAppender
 {
 public:
-    StdOutLogAppender() = default;
-    StdOutLogAppender(LogLevel::Level level = LogLevel::Level::DEBUG)
+    typedef std::shared_ptr<StdOutLogAppender> ptr;
+
+    /**
+     * @brief           构造函数
+     * @param level     指定父类m_level的值
+     */
+    explicit StdOutLogAppender(LogLevel::Level level = LogLevel::Level::DEBUG)
             : LogAppender(level){}
+    ~StdOutLogAppender()override = default;
     void log(LogLevel::Level level, std::string logStr) override;
 };
 
-// 输出到文件
+/**
+ * @brief 输出到指定文件
+ */
 class FileLogAppender : public LogAppender
 {
 public:
-    FileLogAppender(const std::string& fileName, LogLevel::Level level = LogLevel::Level::DEBUG);
+    typedef std::shared_ptr<FileLogAppender> ptr;
+
+    /**
+     * @brief 构造函数
+     * @param fileName  输出文件
+     * @param level     父类m_level的值
+     */
+    explicit FileLogAppender(const std::string& fileName, LogLevel::Level level = LogLevel::Level::DEBUG);
     ~FileLogAppender() override;
     void log(LogLevel::Level level, std::string logStr) override;
 private:
-    std::string m_fileName;             // 目的文件名
+    /// 目的文件名
+    std::string m_fileName;
     std::ofstream m_fileStream;
 };
 
-// 日志器
+/**
+ * @brief 日志器
+ */
 class Logger
 {
 public:
@@ -115,7 +150,6 @@ public:
     void addAppender(LogAppender::ptr appender);
     void delAppender(LogAppender::ptr appender);
 
-    // 打印日志调用的函数(相应级别)
     void debug(LogInfo::ptr logStr);
     void info(LogInfo::ptr logStr);
     void warn(LogInfo::ptr logStr);
@@ -123,8 +157,10 @@ public:
     void fatal(LogInfo::ptr logStr);
 
 private:
-    void log(LogLevel::Level level, LogInfo::ptr logInfo);  // 子函数
-    std::list<LogAppender::ptr> m_appenders;                // 集合(输出地集合),输出可能不止一个地方
+    /// 子函数
+    void log(LogLevel::Level level, LogInfo::ptr logInfo);
+    /// 集合(输出地集合)
+    std::list<LogAppender::ptr> m_appenders;
 };
 
 #endif //WEBSERVER_LOG_H
