@@ -1,8 +1,8 @@
-/***********************************************************
- *@author RedDragon
- *@date 2020/9/1
- *@brief 一些使用到的函数
-***********************************************************/
+/**
+ * @author RedDragon
+ * @date 2021/5/29
+ * @brief 一些函数的实现
+*/
 #include "util.h"
 #include <fcntl.h>
 #include <sys/types.h>
@@ -20,27 +20,27 @@ void setSigIgn(int sig)
     struct sigaction act;
     act.sa_flags = 0;
     act.sa_handler = SIG_IGN;
-    sigfillset(&act.sa_mask);// 信号处理函数执行时, 阻塞所有信号
+    /// 信号处理函数执行时, 阻塞所有信号
+    sigfillset(&act.sa_mask);
     if(-1 == sigaction(sig, &act, nullptr))
         perror("sigaction");
 }
 
-// 根据指定端口创建soket，并且bind，listen
 int socket_bind_listen(int port)
 {
-    // 检查port值，取正确区间范围
+    /// 检查port值，取正确区间范围
     if(port < 1024 || port > 65535)
         return -1;
 
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if(listen_fd == -1)
         return -1;
-    // 消除bind时"Adress a'lready is used"的错误，
+    /// 消除bind时"Adress a'lready is used"的错误，
     int optval = 1;
     if(setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1)
         return -1;
 
-    // 设置服务器的IP和port，并且绑定到监听的socket描述符上。
+    /// 设置服务器的IP和port，并且绑定到监听的socket描述符上。
     struct sockaddr_in server_addr;
     bzero(&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -49,7 +49,7 @@ int socket_bind_listen(int port)
     if(bind(listen_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1)
         return -1;
 
-    // 开始监听，第二参数：未决的连接个数
+    /// 开始监听
     if(listen(listen_fd, LISTENQ) == -1)
         return -1;
     else
@@ -70,32 +70,31 @@ int setNonBlock(int fd)
     return 0;
 }
 
-// 媒体类型（通常称为 Multipurpose Internet Mail Extensions 或 MIME 类型 ）是一种标准，
-// 用来表示文档、文件或字节流的性质和格式。它在IETF RFC 6838中进行了定义和标准化。
 std::string getMimeType(const std::string& suffix)
 {
-    static std::unordered_map<std::string, std::string> map;
-    // 防止线程安全, 应该在往线程添加工作任务之前 初始化一下map, 之后就只能读map
-    if(map.empty())
+    static std::unordered_map<std::string, std::string> ma;
+    /// 初始化一下ma, 之后就只能读ma。
+    if(ma.empty())
     {
-        map.insert(std::pair<std::string, std::string>("default","text/plain"));// 这个不在标准中, 默认当作文本文件, 可以直接展示
-        map.insert(std::pair<std::string, std::string>(".html","text/html"));
-        map.insert(std::pair<std::string, std::string>(".htm","text/html"));
-        map.insert(std::pair<std::string, std::string>(".avi","video/x-msvideo"));
-        map.insert(std::pair<std::string, std::string>(".bmp","timage/bmp"));
-        map.insert(std::pair<std::string, std::string>(".c","text/plain"));
-        map.insert(std::pair<std::string, std::string>(".doc","application/msword"));
-        map.insert(std::pair<std::string, std::string>(".gif","image/gif"));
-        map.insert(std::pair<std::string, std::string>(".gz","application/x-gzip"));
-        map.insert(std::pair<std::string, std::string>(".ico","application/x-ico"));
-        map.insert(std::pair<std::string, std::string>(".png", "image/png"));
-        map.insert(std::pair<std::string, std::string>(".txt", "text/plain"));
-        map.insert(std::pair<std::string, std::string>(".mp3", "audio/mp3"));
+        /// 这个不在标准中, 默认当作文本文件, 可以直接展示
+        ma.insert(std::pair<std::string, std::string>("default","text/plain"));
+        ma.insert(std::pair<std::string, std::string>(".html","text/html"));
+        ma.insert(std::pair<std::string, std::string>(".htm","text/html"));
+        ma.insert(std::pair<std::string, std::string>(".avi","video/x-msvideo"));
+        ma.insert(std::pair<std::string, std::string>(".bmp","timage/bmp"));
+        ma.insert(std::pair<std::string, std::string>(".c","text/plain"));
+        ma.insert(std::pair<std::string, std::string>(".doc","application/msword"));
+        ma.insert(std::pair<std::string, std::string>(".gif","image/gif"));
+        ma.insert(std::pair<std::string, std::string>(".gz","application/x-gzip"));
+        ma.insert(std::pair<std::string, std::string>(".ico","application/x-ico"));
+        ma.insert(std::pair<std::string, std::string>(".png", "image/png"));
+        ma.insert(std::pair<std::string, std::string>(".txt", "text/plain"));
+        ma.insert(std::pair<std::string, std::string>(".mp3", "audio/mp3"));
     }
-    auto it = map.find(suffix);
-    if(it != map.end())
+    auto it = ma.find(suffix);
+    if(it != ma.end())
         return it->second;
-    return map["default"];
+    return ma["default"];
 }
 
 int readn(int fd, char* buf, size_t size)
@@ -152,9 +151,13 @@ int writen(int fd, const char *buf, size_t size)
     return total;
 }
 
-uint64_t getMilliSecond()
+std::uint64_t current_time()
 {
+    std::uint64_t ret = -1;
     struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return tv.tv_sec * 1000ul + tv.tv_usec / 1000;
+    if(-1 == gettimeofday(&tv, nullptr))
+        perror("gettimeofday");
+    else
+        ret = tv.tv_sec * (std::uint64_t)1000 + tv.tv_usec / (std::uint64_t)1000;
+    return ret;
 }
