@@ -1,16 +1,19 @@
-/***********************************************************
- *@author RedDragon
- *@date 2021/2/28
- *@brief 计时器
-***********************************************************/
+/*
+ * @author RedDragon
+ * @date 2021/2/28
+ * @brief 定时器
+ **/
+
 #ifndef WEBSERVER_TIMER_H
 #define WEBSERVER_TIMER_H
+
 #include <cstdint>
 #include <functional>
 #include <queue>
 #include <vector>
+#include "lock.h"
+
 using std::priority_queue;
-#include "Lock.h"
 
 class TimerManager;
 // 计时器
@@ -45,7 +48,7 @@ struct Comparator{
 class TimerManager
 {
 private:
-    RWLock lock;
+    RWMutex lock;
     priority_queue<Timer*, std::vector<Timer*>, Comparator> Sequence;// 底层容器
     /* 底层容器保证按照超时时间升序排列
      * 选用堆 而不是 list的原因:

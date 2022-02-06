@@ -1,10 +1,10 @@
-/***********************************************************
+/*
  *@author RedDragon
  *@date 2020/8/26
  *@brief 解析http请求的相关函数和类
  * http状态机
  * while就是为了状态的转移
-***********************************************************/
+ **/
 #ifndef WEBSERVER_HTTPDATA_H
 #define WEBSERVER_HTTPDATA_H
 #include "useEpoll.h"

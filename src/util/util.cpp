@@ -1,9 +1,5 @@
-/**
- * @author RedDragon
- * @date 2021/5/29
- * @brief 一些函数的实现
-*/
-#include "util.h"
+#include "util/util.h"
+
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>

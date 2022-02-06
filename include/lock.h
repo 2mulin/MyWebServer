@@ -8,7 +8,7 @@
 #define WEBSERVER_LOCK_H
 
 #include <pthread.h>
-#include <util.h>
+#include "util/util.h"
 
 /**
  * @brief 简单封装一下pthread_mutex_t这个互斥量。

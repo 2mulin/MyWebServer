@@ -1,0 +1,43 @@
+/**
+ * @author RedDragon
+ * @date 2021/4/20
+ * @brief 配置系统的简单是实现
+ * 直接读取conf目录下的server.conf文件.
+ * 按照key: value的格式读,直接存到哈希表中.
+ */
+
+#ifndef WEBSERVER_CONF_H
+#define WEBSERVER_CONF_H
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+
+#include "log/log.h"
+
+class Conf
+{
+public:
+    Conf(std::string fileName);
+    /*
+     * @brief: 返回设置的端口号
+     */
+    uint16_t getPort()const;
+    uint16_t getMaxThreadCount()const;
+    /*
+     * @brief: 返回设置的资源目录
+     */
+    std::string getHtdocs()const;
+
+private:
+
+    std::string m_fileName;
+    std::unordered_map<std::string, std::string> m_conf;
+    /*
+     * @brief: 读取指定配置文件
+     * @return 0表示成功, -1表示文件无法打开, (n > 0)表示n行有格式错误.
+     */
+    int readConf(std::string pathName);
+
+};
+
+#endif //WEBSERVER_CONF_H

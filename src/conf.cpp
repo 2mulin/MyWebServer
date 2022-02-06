@@ -1,36 +1,34 @@
-/***********************************************************
- *@author RedDragon
- *@date 2021/4/20
- *@brief 
-***********************************************************/
+#include "conf.h"
 
-#include "Conf.h"
 #include <fstream>
 #include <iostream>
 
-using std::ifstream;
+#include "log/log.h"
+
+static Logger::ptr logger = std::make_shared<Logger>("Conf_Logger");
 
 Conf::Conf(std::string fileName)
         :m_fileName(fileName)
 {
+    
     int ret = readConf("../conf/server.conf");
     if(ret == 0)
-        m_logger->info("配置读取完毕!");
+        LOG_INFO(logger) << "配置文件读取完毕!" << std::endl;
     else if(ret == -1)
     {
-        m_logger->fatal("配置文件无法打开!")
+        LOG_INFO(logger) << "配置文件无法打开!" << std::endl;
         exit(-1);
     }
     else
     {
-        m_logger->fatal(std::to_string(ret) + "行格式错误!");
+        LOG_FATAL(logger) << std::to_string(ret) + "行格式错误!" << std::endl;
         exit(-1);
     }
 }
 
 int Conf::readConf(std::string pathName)
 {
-    ifstream buf(pathName);
+    std::ifstream buf(pathName);
     if(!buf.is_open())
         return -1;
     char str[1024] = {0};
@@ -62,7 +60,7 @@ int Conf::readConf(std::string pathName)
         // 读完一行, key或这value为空,表示格式错误.
         if(key.empty() || value.empty())
             return line;
-        m_conf.insert(key, value);
+        m_conf.insert(std::pair<std::string, std::string>{key, value});
         ++line;
     }
     return 0;
@@ -71,10 +69,10 @@ int Conf::readConf(std::string pathName)
 uint16_t Conf::getPort() const
 {
     auto item = m_conf.find("PORT");
-    int val = item->second;
+    int val = std::stoi(item->second);
     if(val < 1024 || val > 65535)
     {
-        m_logger->fatal("端口号大小设置错误!");
+        LOG_FATAL(logger) << "端口号大小设置错误!" << std::endl;
         exit(-1);
     }
     return val;
@@ -83,11 +81,11 @@ uint16_t Conf::getPort() const
 uint16_t Conf::getMaxThreadCount() const
 {
     auto item = m_conf.find("MaxThreadCount");
-    uint16_t val = item->second;
+    uint16_t val = std::stoi(item->second);
     return val;
 }
 
-string Conf::getHtdocs() const
+std::string Conf::getHtdocs() const
 {
-    return m_conf.find("htdocs");
+    return m_conf.find("htdocs")->second;
 }

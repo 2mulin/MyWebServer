@@ -1,24 +1,16 @@
-/***********************************************************
- *@author RedDragon
- *@date 2021/2/28
- *@brief
- * 使用gettimeofday()实现的毫秒级定时器.
-***********************************************************/
-#include "Timer.h"
-#include "util.h"
-
-// Timer的实现
+#include "timer.h"
+#include "util/util.h"
 
 Timer::Timer(uint64_t ms)
     : timeout(ms)
 {
-    timeout += getMilliSecond();
+    timeout += current_time();
 }
 
 Timer::Timer(uint64_t ms, std::function<void()> cb)
     :timeout(ms), callBack(cb)
 {
-    timeout += getMilliSecond();
+    timeout += current_time();
 }
 
 Timer::~Timer()
@@ -30,14 +22,12 @@ void Timer::cancel()
         callBack = nullptr;
 }
 
-// TimerManager的实现
-
 TimerManager::TimerManager()
 {}
-// 析构时删除所有timer
+
 TimerManager::~TimerManager()
 {
-    WriteScopedLockImpl<RWLock> writeLock(lock);
+    WriteScopedLock writeLock(lock);
     while(!Sequence.empty())
     {
         Timer* p = Sequence.top();
@@ -50,7 +40,7 @@ TimerManager::~TimerManager()
 Timer* TimerManager::addTimer(uint64_t ms, std::function<void()>&& cb)
 {
     Timer* p = new Timer(ms, cb);
-    WriteScopedLockImpl<RWLock> wirteLock(lock);
+    WriteScopedLock wirteLock(lock);
     Sequence.push(p);
     return p;
 }
@@ -59,15 +49,15 @@ Timer* TimerManager::addTimer(uint64_t ms, std::function<void()>&& cb)
 // 可以删除, 才会真正删除, 否则先取消计时器, 等待删除
 void TimerManager::delTimer(Timer* p)
 {
-    WriteScopedLockImpl<RWLock> writeLock(lock);
+    WriteScopedLock writeLock(lock);
     p->cancel();
 }
 
 // 执行所有超时事件
 void TimerManager::takeAllTimeout()
 {
-    WriteScopedLockImpl<RWLock> writeLock(lock);
-    uint64_t now = getMilliSecond();
+    WriteScopedLock writeLock(lock);
+    uint64_t now = current_time();
     printf("执行清理, 还剩%lu个元素\n", Sequence.size());
     while(!Sequence.empty() && Sequence.top()->getTimeOut() < now)
     {
@@ -82,8 +72,8 @@ void TimerManager::takeAllTimeout()
 // 最小到期时间还剩多久
 int64_t TimerManager::getMinTO()
 {
-    ReadScopedLockImpl<RWLock> readLock(lock);
+    ReadScopedLock readLock(lock);
     if(Sequence.empty())
         return -1;
-    return Sequence.top()->getTimeOut() - getMilliSecond();
+    return Sequence.top()->getTimeOut() - current_time();
 }

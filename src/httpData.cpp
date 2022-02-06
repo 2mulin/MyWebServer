@@ -1,12 +1,6 @@
-/***********************************************************
- *@author RedDragon
- *@date 2020/8/26
- *@brief requestData的实现
- * 支持GET, POST
-***********************************************************/
 #include "httpData.h"
-#include "util.h"
-#include "Timer.h"
+#include "util/util.h"
+#include "timer.h"
 
 #include <sys/stat.h>
 #include <unistd.h>

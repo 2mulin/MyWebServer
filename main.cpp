@@ -5,11 +5,11 @@
 #include <cstring>
 
 #include "threadpool.h"
-#include "util.h"
+#include "util/util.h"
 #include "useEpoll.h"
 #include "httpData.h"
-#include "Lock.h"
-#include "Timer.h"
+#include "lock.h"
+#include "timer.h"
 
 const int MAXEVENTS = 4096; // epoll_event数组大小
 int epollFd = -1;           // EPOLL实例描述符

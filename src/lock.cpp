@@ -1,10 +1,4 @@
-/**
- *@author RedDragon
- *@date 2021/5/23
- *@brief RAII锁的实现
- */
-
-#include "Lock.h"
+#include "lock.h"
 
 Mutex::Mutex()
 {
