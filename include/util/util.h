@@ -9,6 +9,7 @@
 
 #include <string>
 #include <cstdint>
+#include <cxxabi.h>
 
 /**
  * @brief 禁止拷贝
@@ -68,5 +69,17 @@ std::string getMimeType(const std::string& suffix);
  * @brief 获得当前时间(毫秒级)
  */
 std::uint64_t current_time();
+
+/**
+ * @brief 将类型名转化为字符串(typeinfo)
+ * @tparam T
+ * @return char* 类型名字符串
+ */
+template<typename T>
+const char* typeToName()
+{
+    static const char* name = abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, nullptr);
+    return name;
+}
 
 #endif //WEBSERVER_UTIL_H

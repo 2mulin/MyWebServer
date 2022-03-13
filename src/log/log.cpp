@@ -77,8 +77,9 @@ void Logger::fatal(LogEvent::ptr event)
 }
 
 LoggerManager::LoggerManager()
+    :m_root(nullptr)
 {
-    m_root.reset(new Logger);
+    m_root = std::make_shared<Logger>();
     LogAppender::ptr appender = std::make_shared<StdOutLogAppender>();
     m_root->addAppender(appender);
 

@@ -8,6 +8,12 @@
 
 工具链：g++ 9.4.0；gdb 9.2；make 4.2.1；cmake 3.16.3
 
+第三方依赖：
+
+1. [yaml-cpp](https://github.com/jbeder/yaml-cpp)
+
+2. boost 1.71
+
 目录结构：
 
 | include | src | conf | log | htdocs |
@@ -97,7 +103,27 @@ errno是线程安全的（thread_local，不同线程有不同的errno）, 可�
 
 #### 约定大于配置
 
-**约定大于配置**的思想？
+[约定大于配置](https://zh.wikipedia.org/wiki/%E7%BA%A6%E5%AE%9A%E4%BC%98%E4%BA%8E%E9%85%8D%E7%BD%AE):
+程序所依赖的配置项都有一个**公认的名字**和默认值，也就是约定。对于这些具有公认约定的配置，就不需要程序员在程序跑起来之前，一项一项去设置了。
+
+约定优于配置的方式可以减少程序员做决定的数量，获得简单的好处，同时兼顾灵活性。
+
+**在代码上**，约定优于配置的思路体现为所有的配置项在定义时都带一个的默认值。
+
+已有功能：
+
+* 定义即可使用。
+* 多级配置项。如`tcp.connect.timeout`。
+* 动态变更配置值，生效。
+
+配置文件时yaml格式，需要`yaml-cpp`库的支持。
+
+ConfigItemBase基类有两个虚函数，toString和fromString。这两个函数的实现需要借助一些类型转化，毕竟C++标准库只提供了一部分类型和std::string的相互转换，像vector，map，set，自定义类型之类到string之间的转换就没有。
+所以需要实现，也不是std::string，而是yaml::string类型。
+
+然后实现一个ConfigManager类管理所有的配置项。
+
+暂未完成
 
 ### request解析器
 

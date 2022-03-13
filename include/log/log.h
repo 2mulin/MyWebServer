@@ -12,6 +12,7 @@
 #include "log/level.h"
 #include "log/event.h"
 #include "log/appender.h"
+#include "util/singleton.h"
 
 class LogEvent;
 class LogEventWrap;
@@ -116,7 +117,7 @@ public:
     /**
      * @brief 返回主日志器
      */
-    Logger::ptr getRoot() const { return m_root;}
+    Logger::ptr getRoot() { return m_root;}
 
 private:
     std::mutex m_mtx;
@@ -125,6 +126,19 @@ private:
     /// 主日志器
     Logger::ptr m_root;
 };
+
+/// 日志器管理器单例类型
+typedef Singleton<LoggerManager> LoggerMgr;
+
+/**
+ * @brief 获取主日志器
+ */
+#define LOG_ROOT() LoggerMgr::getInstance().getRoot()
+
+/**
+ * @brief 获取指定name的日志器
+ */
+#define LOG_NAME(name) LoggerMgr::getInstance().getLogger(name)
 
 /**
  * @brief Event事件包装器，就是把LogEvent和Logger包装在一起。
@@ -137,9 +151,9 @@ public:
      * @brief 构造函数
      * @param event 日志事件
      */
-    LogEventWrap(LogEvent::ptr event)
+    explicit LogEventWrap(LogEvent::ptr event)
         :m_event(event)
-    {};
+    {}
 
     ~LogEventWrap()
     {
@@ -170,7 +184,7 @@ private:
  * @brief 使用流方式将日志写入到logger
  */
 #define LOG_LEVEL(logger, level)    \
-    if(logger->getLevel() <= level) \
+    if((logger)->getLevel() <= (level)) \
         LogEventWrap(std::make_shared<LogEvent>(logger, level, \
             __FILE__, __LINE__, 0, 6666, time(0), "threadName")).getSS()
 
@@ -231,5 +245,7 @@ private:
  * @brief 使用格式化方式将日志级别fatal的日志写入到logger
  */
 #define LOG_FMT_FATAL(logger, fmt, ...) LOG_FMT_LEVEL(logger, LogLevel::FATAL, fmt, __VA_ARGS__)
+
+#define LOG_ROOT() LoggerMgr::getInstance().getRoot()
 
 #endif //WEBSERVER_LOG_H
