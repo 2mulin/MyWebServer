@@ -114,16 +114,14 @@ errno是线程安全的（thread_local，不同线程有不同的errno）, 可�
 
 * 定义即可使用。
 * 多级配置项。如`tcp.connect.timeout`。
-* 动态变更配置值，生效。
+* 动态变更配置值，生效。（怎么知道配置被改变的？ 定时重新调用一次loadFromYaml接口？）
 
 配置文件时yaml格式，需要`yaml-cpp`库的支持。
 
 ConfigItemBase基类有两个虚函数，toString和fromString。这两个函数的实现需要借助一些类型转化，毕竟C++标准库只提供了一部分类型和std::string的相互转换，像vector，map，set，自定义类型之类到string之间的转换就没有。
-所以需要实现，也不是std::string，而是yaml::string类型。
+所以需要实现，也不是std::string，而是yaml::string类型（好像都是一样的）。
 
-然后实现一个ConfigManager类管理所有的配置项。
-
-暂未完成
+然后实现一个ConfigManager类管理所有的配置项。主要提供两个接口loadFromYaml和loadFromCmd，用来从yaml配置文件和cmd参数中加载配置。读取yaml文件实际工作是由yaml-cpp库完成的。
 
 ### request解析器
 
@@ -135,8 +133,8 @@ ConfigItemBase基类有两个虚函数，toString和fromString。这两个函数
 
 ## 改进点
 
-1. 线程池有时间需要重写，可以考虑如何实现动态线程池，如果异步获取返回值。
-
-2. 配置系统需要重写，现在这个只是在简单的读写文件而已。
-
-3. 日志系统再研究研究。
+1. 线程池有时间需要重写，可以考虑如何实现动态线程池，如果利用std::future异步获取返回值。以及优雅设置参数（线程间共享资源）。（优先）
+2. 对于mian函数，需要改进整个流程。
+3. 对于http协议解析，还需要重新设计重写。
+4. useEpoll这两个文件已经删除，封装的毫无意义。重新想想怎么封装吧。如一个抽象类，提供io多路复用的功能，但内部可能使用poll，epoll等实现。
+5. 定时器新增定时任务时，要可以传入参数，且可以有返回值。
