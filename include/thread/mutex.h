@@ -145,7 +145,7 @@ namespace WebServer{
             m_lk.unlock();
         }
 
-        void Lock()
+        void lock()
         {
             if(!m_isLock)
             {
@@ -187,7 +187,7 @@ namespace WebServer{
             unlock();
         }
 
-        void Lock()
+        void lock()
         {
             if(!m_isLock)
             {
@@ -200,7 +200,7 @@ namespace WebServer{
         {
             if(m_isLock)
             {
-                m_mtx.unLock();
+                m_mtx.unlock();
                 m_isLock = false;
             }
         }
