@@ -6,13 +6,15 @@
 #include <memory>
 #include <list>
 #include <map>
-
-#include <unistd.h> // gettid需要这个头文件
+#include <utility>
 
 #include "log/level.h"
 #include "log/event.h"
 #include "log/appender.h"
 #include "util/singleton.h"
+#include "util/util.h"
+#include "thread/mutex.h"
+#include "thread/thread.h"
 
 class LogEvent;
 class LogEventWrap;
@@ -27,7 +29,11 @@ friend class LoggerManager;
 public:
     typedef std::shared_ptr<Logger> ptr;
 
-    Logger(const std::string& name="root");
+    Logger(const std::string& name="root")
+        :m_level(LogLevel::DEBUG),
+         m_formatter(std::make_shared<LogFormatter>("%d{%Y-%m-%d %H:%M:%S}%T%t%T%N%T[%p]%T%f:%l%T%m%n")),
+         m_name(name)
+    {}
 
     /**
      * @brief 增加观察者
@@ -42,15 +48,19 @@ public:
     void delAppender(LogAppender::ptr appender);
 
     /**
-     * @brief 清空日志appenders
+     * @brief 清空日志所有appender
      */
-    void clearAppenders();
+    void clearAppender();
+
+    /// 通过相应函数输出日志.
 
     void debug(LogEvent::ptr event);
     void info(LogEvent::ptr event);
     void warn(LogEvent::ptr event);
     void error(LogEvent::ptr event);
     void fatal(LogEvent::ptr event);
+
+    /// 结束
     
     /**
      * @brief 返回日志器名称
@@ -87,19 +97,13 @@ public:
      */
     void log(LogLevel::Level level, LogEvent::ptr event);
 
-
 private:
-    /// 集合(输出地集合)
-    std::list<LogAppender::ptr> m_appenders;
-    /// 日志器名称
-    std::string m_name;
-    /// 互斥锁
-    std::mutex m_mtx;
-    /// 主日志器
-    Logger::ptr m_root;
-    /// 格式化器
-    LogFormatter::ptr m_formatter;
-    LogLevel::Level m_level;
+    LogLevel::Level                 m_level;
+    Logger::ptr                     m_root;         /// 主日志器
+    LogFormatter::ptr               m_formatter;    /// 格式化器
+    WebServer::Mutex                m_mtx;          /// 互斥锁
+    std::string                     m_name;         /// 日志器名称
+    std::list<LogAppender::ptr>     m_listAppender; /// 集合(输出地集合)
 };
 
 
@@ -120,11 +124,9 @@ public:
     Logger::ptr getRoot() { return m_root;}
 
 private:
-    std::mutex m_mtx;
-    /// 日志器映射
-    std::map<std::string, Logger::ptr> m_loggers;
-    /// 主日志器
-    Logger::ptr m_root;
+    WebServer::Mutex                    m_mtx;
+    std::map<std::string, Logger::ptr>  m_loggers; /// 日志器映射
+    Logger::ptr                         m_root;    /// 主日志器
 };
 
 /// 日志器管理器单例类型
@@ -152,7 +154,7 @@ public:
      * @param event 日志事件
      */
     explicit LogEventWrap(LogEvent::ptr event)
-        :m_event(event)
+        :m_event(std::move(event))
     {}
 
     ~LogEventWrap()
@@ -163,7 +165,7 @@ public:
     /**
      * @brief 获取LogEvent对象，日志事件
      */
-    LogEvent::ptr getEvent() const
+    LogEvent::ptr getEvent()
     {
         return m_event;
     }
@@ -181,12 +183,12 @@ private:
 };
 
 /**
- * @brief 使用流方式将日志写入到logger
+ * @brief 使用流方式将日志按照指定level写入到logger
  */
-#define LOG_LEVEL(logger, level)    \
-    if((logger)->getLevel() <= (level)) \
-        LogEventWrap(std::make_shared<LogEvent>(logger, level, \
-            __FILE__, __LINE__, 0, 6666, time(0), "threadName")).getSS()
+#define LOG_LEVEL(logger, level)                                                    \
+    if((logger)->getLevel() <= (level))                                             \
+        LogEventWrap(std::make_shared<LogEvent>(logger, level, __FILE__, __LINE__,  \
+            util::getThreadID(), time(NULL), WebServer::Thread::GetName())).getSS()
 
 /**
  * @brief 使用流式方式将日志级别debug的日志写入到logger
@@ -216,10 +218,10 @@ private:
 /**
  * @brief 使用格式化方式将日志级别level的日志写入到logger
  */
-#define LOG_FMT_LEVEL(logger, level, fmt, ...)  \
-    if(logger->getLevel() <= level)             \
-        LogEventWrap(std::make_shared<LogEvent>(logger, level, \
-            __FILE__, __LINE__, 0, 6666, time(0), "ThreadName")).getEvent()->format(fmt, __VA_ARGS__)
+#define LOG_FMT_LEVEL(logger, level, fmt, ...)                                      \
+    if(logger->getLevel() <= level)                                                 \
+        LogEventWrap(std::make_shared<LogEvent>(logger, level, __FILE__, __LINE__,  \
+            util::getThreadID(), time(NULL), WebServer::Thread::GetName())).getEvent()->format(fmt, __VA_ARGS__)
 
 /**
  * @brief 使用格式化方式将日志级别debug的日志写入到logger

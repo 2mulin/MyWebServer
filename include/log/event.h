@@ -22,14 +22,13 @@ public:
      * @param[in] level 日志级别
      * @param[in] file 所在文件名
      * @param[in] line 所在行号
-     * @param[in] elapse 程序运行到现在的时间
      * @param[in] threadID 线程ID
      * @param[in] time 时间戳
      * @param[in] threadName 线程名
      */
     LogEvent(std::shared_ptr<Logger> logger, LogLevel::Level level,
-        const char* file, uint32_t line, uint32_t elapse,
-        uint32_t threadID, uint64_t time, const std::string& threadName);
+        const char* file, uint32_t line, uint32_t threadID,
+        uint64_t time, const std::string& threadName);
 
     const char* getFile()const
     {
@@ -39,11 +38,6 @@ public:
     uint32_t getLine()const
     {
         return m_line;
-    }
-
-    uint32_t getElapse()const
-    {
-        return m_elapse;
     }
 
     uint32_t getThreadID()const
@@ -95,24 +89,14 @@ public:
     void format(const char* fmt, va_list al);
 
 private:
-    /// 日志器
-    std::shared_ptr<Logger> m_logger;
-    /// 日志等级
-    LogLevel::Level m_level;
-    /// 文件名
-    const char* m_file = nullptr;
-    /// 行号
-    uint32_t m_line = 0;
-    /// 程序启动开始到现在的毫秒数
-    uint32_t m_elapse = 0;
-    /// 线程ID
-    uint32_t m_threadId = 0;
-    /// 时间戳
-    uint64_t m_time = 0;
-    /// 线程名称
-    std::string m_threadName;
-    /// 日志内容流
-    std::stringstream m_ss;
+    std::shared_ptr<Logger>     m_logger;           /// 日志器
+    LogLevel::Level             m_level;            /// 日志等级
+    const char*                 m_file = nullptr;   /// 当前代码所在文件
+    uint32_t                    m_line = 0;         /// 行号
+    uint32_t                    m_threadId = 0;     /// 线程ID
+    uint64_t                    m_time = 0;         /// 时间戳
+    std::string                 m_threadName;       /// 线程名称
+    std::stringstream           m_ss;               /// 日志内容流
 };
 
 #endif // LOG_EVENT_H

@@ -43,5 +43,5 @@ LogLevel::Level LogLevel::FromString(const std::string& str)
     XX(FATAL, fatal);
     XX(FATAL, FATAL);
 #undef XX
-    return LogLevel::Level::UNKNOW;
+    return LogLevel::Level::UNKNOWN;
 }

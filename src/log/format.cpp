@@ -44,8 +44,25 @@ std::ostream& LogFormatter::format(std::ostream& ofs, std::shared_ptr<Logger> lo
 
 void LogFormatter::init()
 {
-    // 元组（str，format，type）数组
-    std::vector<std::tuple<std::string,std::string, int>> vec;
+    /// 静态变量，字符串映射到创建对应formatItem对象的lambda
+    static std::map<std::string, std::function<LogFormatItem::ptr(const std::string& str)> > s_format_items = {
+#define XX(str, C) \
+        {#str, [](const std::string& fmt) { return LogFormatItem::ptr(new C(fmt));}}
+
+            XX(m, MessageFormatItem),           //m:消息
+            XX(p, LevelFormatItem),             //p:日志级别
+            XX(t, ThreadIdFormatItem),          //t:线程id
+            XX(n, NewLineFormatItem),           //n:换行
+            XX(d, DateTimeFormatItem),          //d:日期时间
+            XX(f, FilenameFormatItem),          //f:文件名
+            XX(l, LineFormatItem),              //l:行号
+            XX(T, TabFormatItem),               //T:Tab
+            XX(N, ThreadNameFormatItem),        //N:线程名称
+#undef XX
+    };
+
+    // 元组（项，子格式，是否需要转义）数组
+    std::vector<std::tuple<std::string, std::string, int>> vec;
     std::string nstr;
     for(size_t i = 0; i < m_pattern.size(); ++i)
     {
@@ -81,8 +98,7 @@ void LogFormatter::init()
             if(fmt_status == 0) {
                 if(m_pattern[n] == '{') {
                     str = m_pattern.substr(i + 1, n - i - 1);
-                    //std::cout << "*" << str << std::endl;
-                    fmt_status = 1; //解析格式
+                    fmt_status = 1; // 需要解析格式
                     fmt_begin = n;
                     ++n;
                     continue;
@@ -90,8 +106,7 @@ void LogFormatter::init()
             } else if(fmt_status == 1) {
                 if(m_pattern[n] == '}') {
                     fmt = m_pattern.substr(fmt_begin + 1, n - fmt_begin - 1);
-                    //std::cout << "#" << fmt << std::endl;
-                    fmt_status = 0;
+                    fmt_status = 0; // 不需要解析格式，原样输出就行
                     ++n;
                     break;
                 }
@@ -123,42 +138,25 @@ void LogFormatter::init()
     if(!nstr.empty()) {
         vec.push_back(std::make_tuple(nstr, "", 0));
     }
-    static std::map<std::string, std::function<LogFormatItem::ptr(const std::string& str)> > s_format_items = {
-#define XX(str, C) \
-        {#str, [](const std::string& fmt) { return LogFormatItem::ptr(new C(fmt));}}
 
-        XX(m, MessageFormatItem),           //m:消息
-        XX(p, LevelFormatItem),             //p:日志级别
-        XX(r, ElapseFormatItem),            //r:累计毫秒数
-        XX(c, NameFormatItem),              //c:日志名称
-        XX(t, ThreadIdFormatItem),          //t:线程id
-        XX(n, NewLineFormatItem),           //n:换行
-        XX(d, DateTimeFormatItem),          //d:时间
-        XX(f, FilenameFormatItem),          //f:文件名
-        XX(l, LineFormatItem),              //l:行号
-        XX(T, TabFormatItem),               //T:Tab
-        XX(N, ThreadNameFormatItem),        //N:线程名称
-#undef XX
-    };
-
-    for(auto& i : vec) 
+    for(auto& tup : vec)
     {
-        if(std::get<2>(i) == 0) 
+        if(std::get<2>(tup) == 0)
         {
-            m_vctItems.push_back(LogFormatItem::ptr(new StringFormatItem(std::get<0>(i))));
-        } 
-        else 
+            /// 如果是不需要转义的，原样输出string。
+            m_vctItems.push_back(LogFormatItem::ptr(new StringFormatItem(std::get<0>(tup))));
+        }
+        else
         {
-            auto it = s_format_items.find(std::get<0>(i));
+            auto it = s_format_items.find(std::get<0>(tup));
             if(it == s_format_items.end())
             {
-                m_vctItems.push_back(LogFormatItem::ptr(new StringFormatItem("<<error_format %" + std::get<0>(i) + ">>")));
+                std::string error_info = "<< unknown format: %" + std::get<0>(tup) + ">>";
+                m_vctItems.push_back(LogFormatItem::ptr(new StringFormatItem(error_info )));
                 m_error = true;
             } 
             else
-            {
-                m_vctItems.push_back(it->second(std::get<1>(i)));
-            }
+                m_vctItems.push_back(it->second(std::get<1>(tup)));
         }
     }
 }

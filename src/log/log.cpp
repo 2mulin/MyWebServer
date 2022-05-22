@@ -1,39 +1,33 @@
 #include "log/log.h"
-#include <ctime>
-#include <mutex>
 
-Logger::Logger(const std::string& name)
-    :m_name(name), m_level(LogLevel::DEBUG) 
-{
-    m_formatter.reset(new LogFormatter("%d{%Y-%m-%d %H:%M:%S}%T%t%T%N%T%F%T[%p]%T[%c]%T%f:%l%T%m%n"));
-}
+using WebServer::ScopedLock;
 
 void Logger::addAppender(LogAppender::ptr appender)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
+    ScopedLock<WebServer::Mutex> lk(m_mtx);
     // 如果该appender的formatter为空，那就指定一个。
     if(!appender->getFormatter())
         appender->setFormatter(m_formatter);
-    m_appenders.push_back(appender);
+    m_listAppender.push_back(appender);
 }
 
 void Logger::delAppender(LogAppender::ptr appender)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
-    for(auto it = m_appenders.begin(); it != m_appenders.end(); ++it)
+    ScopedLock<WebServer::Mutex> lk(m_mtx);
+    for(auto it = m_listAppender.begin(); it != m_listAppender.end(); ++it)
     {
         if(*it == appender)
         {
-            m_appenders.erase(it);
+            m_listAppender.erase(it);
             break;
         }
     }
 }
 
-void Logger::clearAppenders()
+void Logger::clearAppender()
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
-    m_appenders.clear();
+    ScopedLock<WebServer::Mutex> lk(m_mtx);
+    m_listAppender.clear();
 }
 
 /// 子函数
@@ -44,9 +38,9 @@ void Logger::log(LogLevel::Level level, LogEvent::ptr event)
     {
         /// this智能指针
         auto self = shared_from_this();
-        std::lock_guard<std::mutex> lock(m_mtx);
-        if(!m_appenders.empty()) {
-            for(auto& item : m_appenders) {
+        ScopedLock<WebServer::Mutex> lk(m_mtx);
+        if(!m_listAppender.empty()) {
+            for(auto& item : m_listAppender) {
                 item->log(self, level, event);
             }
         } else if(m_root) {
@@ -89,7 +83,7 @@ LoggerManager::LoggerManager()
 
 Logger::ptr LoggerManager::getLogger(const std::string& name)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
+    ScopedLock<WebServer::Mutex> lk(m_mtx);
     auto it = m_loggers.find(name);
     if(it != m_loggers.end())
         return it->second;

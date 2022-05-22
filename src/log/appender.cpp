@@ -1,17 +1,20 @@
 #include "log/appender.h"
 
 #include <iostream>
-#include <mutex>
+
+#include "util/util.h"
+
+using WebServer::ScopedLock;
 
 LogFormatter::ptr LogAppender::getFormatter()
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
+    ScopedLock<WebServer::Mutex> lock(m_mtx);
     return m_formatter;
 }
 
 void LogAppender::setFormatter(LogFormatter::ptr newFormatter)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
+    ScopedLock<WebServer::Mutex> lock(m_mtx);
     m_formatter = newFormatter;
 }
 
@@ -19,15 +22,15 @@ void StdOutLogAppender::log(std::shared_ptr<Logger> logger, LogLevel::Level leve
 {
     if(level >= m_level)
     {
-        std::lock_guard<std::mutex> lock(m_mtx);
-        m_formatter->format(logger, level, event);
+        ScopedLock<WebServer::Mutex> lock(m_mtx);
+        m_formatter->format(std::cout, logger, level, event);
     }
 }
 
 FileLogAppender::FileLogAppender(const std::string &fileName)
     :m_fileName(fileName)
 {
-    //m_fileStream.open(m_fileName, std::ios::app);
+    m_fileStream.open(m_fileName, std::ios::app);
     reopen();
 }
 
@@ -39,8 +42,21 @@ FileLogAppender::~FileLogAppender()
 
 bool FileLogAppender::reopen()
 {
-    // 借助util的实现。
-    return true;
+    if(m_fileStream)
+        m_fileStream.close();
+    m_fileStream.open(m_fileName, std::ios::app);
+    if(!m_fileStream.is_open())
+    {
+        // 可能是目录不存在,所以无法创建文件打开, 创建目录试一次
+        std::string dir = util::getDir(m_fileName);
+        if(!util::createDir(dir))
+            std::cout << "create dir failed! dirname: " << dir << std::endl;
+        else
+            std::cout << "create dir success! dirname: " << dir << std::endl;
+        // 再试一次
+        m_fileStream.open("./log.txt");
+    }
+    return m_fileStream.is_open();
 }
 
 void FileLogAppender::log(std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event)
@@ -52,9 +68,9 @@ void FileLogAppender::log(std::shared_ptr<Logger> logger, LogLevel::Level level,
             reopen();
             m_lastTime = now;
         }
-        std::lock_guard<std::mutex> lock(m_mtx);
+        ScopedLock<WebServer::Mutex> lock(m_mtx);
         if(!m_formatter->format(m_fileStream, logger, level, event)) {
-            std::cout << "error" << std::endl;
+            std::cout << "FileLogAppender::log error!" << std::endl;
         }
     }
 }

@@ -15,10 +15,13 @@ class LogFormatItem
 {
 public:
     typedef std::shared_ptr<LogFormatItem> ptr;
-    /**
-     * @brief 析构函数
-     */
+
+    LogFormatItem(const std::string& format = "")
+        :m_format(format)
+    {}
+
     virtual ~LogFormatItem() {}
+
     /**
      * @brief 格式化日志到流
      * @param[in, out] os 日志输出流
@@ -27,6 +30,9 @@ public:
      * @param[in] event 日志事件
      */
     virtual void format(std::ostream &os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) = 0;
+
+protected:
+    std::string     m_format;/// 日志项的格式(目前只有日期时间项有格式)
 };
 
 /**
@@ -35,7 +41,8 @@ public:
 class MessageFormatItem : public LogFormatItem
 {
 public:
-    MessageFormatItem(const std::string& str = "")
+    MessageFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream &os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override
@@ -50,7 +57,8 @@ public:
 class LevelFormatItem : public LogFormatItem 
 {
 public:
-    LevelFormatItem(const std::string& str = "")
+    LevelFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -60,43 +68,13 @@ public:
 };
 
 /**
- * @brief 程序持续运行时间项
- */
-class ElapseFormatItem : public LogFormatItem 
-{
-public:
-    ElapseFormatItem(const std::string& str = "")
-    {}
-
-    void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
-    {
-        os << event->getElapse();
-    }
-};
-
-/**
- * @brief 日志器名称
- */
-class NameFormatItem : public LogFormatItem 
-{
-public:
-    NameFormatItem(const std::string& str = "") 
-    {}
-    
-    void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
-    {
-        // logger还没实现
-        //os << event->getLogger()->getName();
-    }
-};
-
-/**
- * @brief 日志器名称项
+ * @brief 线程id项
  */
 class ThreadIdFormatItem : public LogFormatItem 
 {
 public:
-    ThreadIdFormatItem(const std::string& str = "")
+    ThreadIdFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -111,7 +89,8 @@ public:
 class ThreadNameFormatItem : public LogFormatItem
 {
 public:
-    ThreadNameFormatItem(const std::string& str = "") 
+    ThreadNameFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -126,7 +105,8 @@ public:
 class NewLineFormatItem : public LogFormatItem 
 {
 public:
-    NewLineFormatItem(const std::string& str = "")
+    NewLineFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -141,7 +121,8 @@ public:
 class LineFormatItem : public LogFormatItem 
 {
 public:
-    LineFormatItem(const std::string& str = "") 
+    LineFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -156,7 +137,8 @@ public:
 class FilenameFormatItem : public LogFormatItem 
 {
 public:
-    FilenameFormatItem(const std::string& str = "") 
+    FilenameFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -171,7 +153,8 @@ public:
 class TabFormatItem : public LogFormatItem
 {
 public:
-    TabFormatItem(const std::string& str = "")
+    TabFormatItem(const std::string& format = "")
+        : LogFormatItem(format)
     {}
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
@@ -181,13 +164,13 @@ public:
 };
 
 /**
- * @brief 时间项，内部调用strftime获取。
+ * @brief 时间日期项，内部调用strftime设定子格式
  */
 class DateTimeFormatItem : public LogFormatItem
 {
 public:
     DateTimeFormatItem(const std::string& format = "%Y-%m-%d %H:%M:%S")
-        :m_format(format)
+        : LogFormatItem(format)
     {
         // 防止用户传进来的format为空
         if(m_format.empty())
@@ -195,19 +178,18 @@ public:
     }
 
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override;
-
-private:
-    std::string m_format;
 };
 
 /**
- * @brief 字符串项，format原封不动，流输入string
+ * @brief 格式中不需要转义的项，原封不动，直接输出。
  */
 class StringFormatItem : public LogFormatItem 
 {
 public:
     StringFormatItem(const std::string& str)
-        :m_string(str) {}
+        :m_string(str)
+    {}
+
     void format(std::ostream& os, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override 
     {
         os << m_string;
@@ -226,21 +208,17 @@ public:
     typedef std::shared_ptr<LogFormatter> ptr;
     /**
      * @brief 构造函数
-     * @param[in] pattern 格式模板
+     * @param[in] pattern 日志格式模板,可以设置的项如下
      * @details 
      *  %m 消息内容
      *  %p 日志级别
-     *  %r 累计毫秒数
-     *  %c 日志名称
      *  %t 线程id
      *  %n 换行
-     *  %d 时间,后面加{}指定具体格式
+     *  %d 日期时间,后面加{}指定子格式，strftime的格式
      *  %f 文件名
      *  %l 行号
      *  %T 制表符
      *  %N 线程名称
-     *
-     *  默认格式 "%d{%Y-%m-%d %H:%M:%S}%T%t%T%N%T[%p]%T[%c]%T%f:%l%T%m%n"
      */
     LogFormatter(const std::string& pattern);
 
@@ -255,7 +233,7 @@ public:
     /**
      * @brief 返回日志格式
      */
-    const std::string getPattern() const
+    const std::string& getPattern() const
     {
         return m_pattern;
     }
@@ -268,13 +246,11 @@ public:
         return m_error;
     }
 
+
 private:
-    /// 日志格式模板
-    std::string m_pattern;
-    /// 日志格式解析后格式
-    std::vector<LogFormatItem::ptr> m_vctItems;
-    /// 是否有错误
-    bool m_error = false;
+    std::string                     m_pattern;        /// 日志格式模板
+    std::vector<LogFormatItem::ptr> m_vctItems;       /// 具体的LogFormatItem
+    bool                            m_error = false;  /// 是否有错误
 };
 
 #endif // LOG_FORMAT_H

@@ -4,10 +4,10 @@
 #include <string>
 #include <memory>
 #include <fstream>
-#include <mutex>
 
 #include "log/level.h"
 #include "log/format.h"
+#include "thread/mutex.h"
 
 /**
  * @brief 日志输出地址(抽象类)
@@ -23,7 +23,7 @@ public:
     virtual ~LogAppender()=default;
 
     /**
-     * @brief           纯虚函数, 往指定地址写日志
+     * @brief 纯虚函数, 往指定地址写日志
      * @param logger    日志器
      * @param level     这条日志的级别
      * @param logStr    格式化后的日志
@@ -56,12 +56,9 @@ public:
     void setFormatter(LogFormatter::ptr newFormatter);
 
 protected:
-    /// 默认日志级别，小于该级别，该appender不记录。
-    LogLevel::Level m_level;
-    /// 日志格式器（构造函数没有构造，默认为空）
-    LogFormatter::ptr m_formatter;
-    /// 互斥锁
-    std::mutex m_mtx;
+    LogLevel::Level         m_level;          /// 默认日志级别，小于该级别，该appender不记录。
+    LogFormatter::ptr       m_formatter;      /// 日志格式器（构造函数没有构造，默认为空）
+    WebServer::Mutex        m_mtx;            /// 互斥锁
 };
 
 /**
@@ -104,12 +101,9 @@ public:
 
     void log(std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) override;
 private:
-    /// 文件路径
-    std::string m_fileName;
-    /// 文件流
-    std::ofstream m_fileStream;
-    /// 上次打开时间
-    uint64_t m_lastTime = 0;
+    std::string     m_fileName;        /// 文件路径
+    std::ofstream   m_fileStream;      /// 文件流
+    uint64_t        m_lastTime = 0;    /// 上次打开时间
 };
 
 #endif // LOG_APPENDER_H
