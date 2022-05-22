@@ -1,68 +1,60 @@
 /**
  *@author 2mu
  *@date 2022/5/10
- *@brief 线程池
+ *@brief 线程池重构,固定线程数的线程池
  */
 
 #ifndef WEBSERVER_THREAD_POOL_H
 #define WEBSERVER_THREAD_POOL_H
 
-#include <vector>
+#include <queue>
 #include <functional>
 #include <future>
+#include <stdexcept>
 
-#include <pthread.h>
+#include <boost/noncopyable.hpp>
 
-enum class ThreadPoolStatus{
-    LOCK_FAILURE,
-    QUEUE_FULL,
-    SHUTDOWN
-};
+#include "thread/thread.h"
+#include "thread/semaphore.h"
+#include "thread/mutex.h"
 
-
-/**
- * @brief 好好想想这个Task怎么实现，不能限制函数类型，返回值类型，参数个数，看起来就是模板。
- *
- * 我应该可以使用std::promise和std::future来实现返回值。
- */
-
-template<typename Func, typename args>
-struct Task
+class ThreadPool : boost::noncopyable
 {
-    std::function<void(void*)> func;
-    void* arg;
-};
-
-class threadPool
-{
-    const int maxThreadCount = 128; // 最大线程数
-    const int QUEUE_SIZE = 20000;   // 任务队列大小
-private:
-    pthread_mutex_t* mtx;       // 互斥量
-    pthread_cond_t* cond;       // 条件变量，用来通知worker thread
-    vector<pthread_t> tidVec;   // 所有线程ID
-    int threadCount;            // 线程数目
-    int coreThreadCount;        // 核心线程数(线程最少保持这个数目)
-    Task *taskQueue;            // 任务队列
-    int taskCount;              // 任务数
-    int begin;
-    int end;
-    bool shutdown;              // 线程池正在关闭
-
-    static void* worker(void*);
-    int createThread(int count);
-
 public:
-    threadPool() noexcept(false);
-    threadPool(int thread_count);
-    ~threadPool();
-    threadPool(const threadPool&) = delete;
-    threadPool& operator=(const threadPool&) = delete;
+    explicit ThreadPool(int thread_count = 4);
+    ~ThreadPool();
 
-    // 添加任务
-    ThreadPoolStatus addTask(Task);
-    // join所有线程
-    ThreadPoolStatus joinAll();
+    template<typename Func, typename... Args>
+    auto addTask(Func&& func, Args&&... args) -> std::future<decltype(func(args...))>
+    {
+        /// 构建一个std::packaged_task(异步任务)
+        auto taskPtr = std::make_shared<std::packaged_task<decltype(func(args...))()>>(
+            std::bind(std::forward<Func>(func), std::forward<Args>(args)...)
+        );
+
+        {
+            WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
+            if(m_isStop)
+                throw std::logic_error("thread pool stopping! push task failed!");
+            m_taskQueue.emplace([taskPtr](){(*taskPtr)();});
+        }
+        m_semaphore.notify();
+        return taskPtr->get_future();
+    }
+
+    int getThreadCount() const
+    {
+        return m_threadCount;
+    }
+
+private:
+    bool                                    m_isStop;
+    int                                     m_threadCount;  /// 线程数目
+    std::queue<std::function<void()>>       m_taskQueue;    /// 任务队列
+    std::vector<WebServer::Thread::ptr>     m_vctThreads;
+
+    WebServer::Semaphore                    m_semaphore;
+    WebServer::Mutex                        m_mtx;          /// 保证任务队列的线程安全
 };
 
 #endif //WEBSERVER_THREAD_POOL_H

@@ -1,8 +1,4 @@
-# 端口号
-PORT: 23456
-
-# 最大线程数
-MaxThreadCount: 1024
-
-# 资源目录
-htdocs: /home/MyWebServer/htdocs
+webserver:
+    -port: 23456
+    -thread_count: 1024
+    -htdocs: /home/MyWebServer/htdocs
