@@ -4,13 +4,16 @@
 #include <memory>
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 #include <string>
 #include <map>
-#include <mutex>
+
+#include "yaml-cpp/yaml.h"
 
 #include "conf/lexicalcast.h"
 #include "log/log.h"
 #include "util/util.h"
+#include "thread/mutex.h"
 
 /**
  * @brief 配置项的基类
@@ -28,7 +31,7 @@ public:
     ConfigItemBase(const std::string &name, const std::string &description = "")
         : m_name(name), m_description(description)
     {
-        // std::transform是algotithm文件的, tolower是c库函数,将字符转化为小写
+        // std::transform是<algorithm>文件的, tolower是c库函数,将字符转化为小写
         std::transform(m_name.begin(), m_name.end(), m_name.begin(), ::tolower);
     }
 
@@ -90,13 +93,13 @@ public:
     std::string toString() override
     {
         try{
-            std::lock_guard<std::mutex> lock(m_mtx);
+            WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
             return ToStr()(m_val);
         }
         catch(std::exception& exp)
         {
             LOG_ERROR(LOG_ROOT()) << "ConfigItem::toString exception "
-                << exp.what() << " convert: " << typeToName<T>() << " to string"
+                << exp.what() << " convert: " << util::typeToName<T>() << " to string"
                 << " name=" << m_name;
         }
         return "";
@@ -110,14 +113,13 @@ public:
     bool fromString(const std::string& val)override
     {
         try{
-            std::lock_guard<std::mutex> lock(m_mtx);
             setValue(FromStr()(val));
             return true;
         }
         catch (const std::exception& e)
         {
             LOG_ERROR(LOG_ROOT()) << "ConfigItem::fromString exception "
-                << e.what() << "convert: string to " << typeToName<T>() << " name="
+                << e.what() << "convert: string to " << util::typeToName<T>() << " name="
                 << m_name << " - " << m_val;
         }
         return false;
@@ -126,9 +128,9 @@ public:
     /**
      * @brief 获取当前配置值
      */
-    const T getValue()
+    T getValue()
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         return m_val;
     }
 
@@ -138,7 +140,7 @@ public:
      */
     void setValue(const T& val)
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         if(val == m_val)
             return;
         // 调用所有回调函数
@@ -155,7 +157,7 @@ public:
      */
     std::string getTypeName()const override
     {
-        return typeToName<T>();
+        return util::typeToName<T>();
     }
 
     /**
@@ -166,7 +168,7 @@ public:
     uint64_t addCallBack(value_change_cb cb)
     {
         static uint64_t funcID = 0;// C++11以上能够保证static局部变量只初始化一次
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         funcID++;
         m_cbs.insert(std::pair<uint64_t, value_change_cb>(funcID, cb));
         return funcID;
@@ -178,7 +180,7 @@ public:
      */
     void delCallBack(uint64_t funcID)
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         m_cbs.erase(funcID);
     }
 
@@ -189,7 +191,7 @@ public:
      */
     value_change_cb getCallBack(uint64_t funcID)
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         auto it = m_cbs.find(funcID);
         return it == m_cbs.end() ? nullptr : it->second;
     }
@@ -199,14 +201,14 @@ public:
      */
     void clearCallBacks()
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         m_cbs.clear();
     }
 
 private:
-    std::mutex m_mtx;
-    T m_val;
-    // 配置值发生变化, 调用的回调函数
+    WebServer::Mutex                    m_mtx;
+    T                                   m_val;
+    /// 配置值发生变化时, 调用的回调函数
     std::map<uint64_t, value_change_cb> m_cbs;
 };
 
@@ -217,22 +219,22 @@ public:
 
     /**
      * @brief 获取参数名为name的配置项名,如果存在直接返回,如果不存在,创建参数配置并用default_value赋值
-     * @tparam T
+     * @tparam T 配置项的类型(如int，string)
      * @param[in] name 配置项名
      * @param[in] default_value 配置项默认值
      * @param[in] description 配置项描述
      * @return 返回对应的配置项,如果参数名存在但是类型不匹配则返回nullptr
-     * @exception 如果参数名包含非法字符[^0-9a-z_.] 抛出异常 std::invalid_argument
+     * @exception std::invalid_argument 如果参数名包含非法字符[^0-9a-z_.] 抛出异常 std::invalid_argument
      */
     template<class T>
-    static typename ConfigItemBase::ptr lookup(const std::string& name,
+    typename ConfigItem<T>::ptr lookup(const std::string& name,
         const T& default_value, const std::string& description = "")
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         auto it = m_mapConfigs.find(name);
         if(it != m_mapConfigs.end())
         {
-            auto tmp = std::dynamic_pointer_cast<ConfigItem<T>::ptr>(it->second);
+            auto tmp = std::dynamic_pointer_cast<ConfigItem<T>>(it->second);
             if(tmp)
             {
                 LOG_INFO(LOG_ROOT()) << "Lookup name=" << name << "exists";
@@ -241,13 +243,13 @@ public:
             else
             {// name对应的配置存在,但是类型不对
                 LOG_ERROR(LOG_ROOT()) << "Lookup name=" << name << " exists but type not "
-                    << typeToName<T>() << " real_type=" << it->second->getTypeName()
+                    << util::typeToName<T>() << " real_type=" << it->second->getTypeName()
                     << " " << it->second->toString();
                 return nullptr;
             }
         }
         // name含有非法字符
-        if(name.find_first_not_of("abcdefghikjlmnopqrstuvwxyz._012345678") != std::string::npos)
+        if(name.find_first_not_of("abcdefghijklmnopqrstuvwxyz._0123456789") != std::string::npos)
         {
             LOG_ERROR(LOG_ROOT()) << "Lookup name invalid " << name;
             throw std::invalid_argument(name);
@@ -259,10 +261,16 @@ public:
         return v;
     }
 
+    /**
+     * @brief 重载
+     * @tparam T 配置项的类型(如int，string)
+     * @param name 配置项名
+     * @return 存在，返回配置项指针，否则返回nullptr
+     */
     template<class T>
-    static typename ConfigItem<T>::ptr lookup(const std::string& name)
+    typename ConfigItem<T>::ptr lookup(const std::string& name)
     {
-        std::lock_guard<std::mutex> lk(m_mtx);
+        WebServer::ScopedLock<WebServer::Mutex> lk(m_mtx);
         auto it = m_mapConfigs.find(name);
         if(it != m_mapConfigs.end())
         {
@@ -272,30 +280,30 @@ public:
     }
 
     /**
-     * @brief 使用YAML::Node初始化配置模块
+     * @brief 使用YAML::Node初始化配置模块(Node实际就是读取一个yaml文件)
      */
-     static void LoadFromYaml(const YAML::Node& root);
+    void loadFromYaml(const YAML::Node& root);
 
     /**
-    * @brief 加载path文件夹里面的配置文件
-    */
-    static void LoadFromConfDir(const std::string& path, bool force = false);
+     * @brief 读取cmd传进来的配置(argv)
+     */
+    bool loadFromCmd(int argc, char* argv[]);
 
     /**
-     * @brief 查找配置参数,返回配置参数的基类指针
+     * @brief 查找配置项,返回配置项指针,没找到返回nullptr
      * @param[in] name 配置参数名称
      */
-    static ConfigItemBase::ptr LookupBase(const std::string& name);
+    ConfigItemBase::ptr lookupBase(const std::string& name);
 
     /**
      * @brief 使用配置模块里面所有配置项,调用一次cb函数
      * @param[in] cb 配置项回调函数
      */
-    static void Visit(std::function<void(ConfigItemBase::ptr)> cb);
+    void visit(std::function<void(ConfigItemBase::ptr)> cb);
 
 private:
-    static std::mutex m_mtx;
-    static ConfigItemMap m_mapConfigs;
+    WebServer::Mutex    m_mtx;
+    ConfigItemMap       m_mapConfigs;// 配置项映射
 };
 
 #endif // WEBSERVER_CONF_H

@@ -1,5 +1,5 @@
-#ifndef CONF_LEXICALCAST_H
-#define CONF_LEXICALCAST_H
+#ifndef CONF_LEXICAL_CAST_H
+#define CONF_LEXICAL_CAST_H
 
 #include <string>
 #include <vector>
@@ -290,4 +290,4 @@ public:
     }
 };
 
-#endif // ! CONF_LEXICALCAST_H
+#endif // ! CONF_LEXICAL_CAST_H
