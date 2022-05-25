@@ -1,4 +1,0 @@
-webserver:
-    -port: 23456
-    -thread_count: 1024
-    -htdocs: /home/MyWebServer/htdocs

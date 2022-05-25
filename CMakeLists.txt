@@ -37,6 +37,9 @@ target_link_libraries(WebServer yaml-cpp)
 
 # 测试用例:
 # 测试配置模块
+add_executable(conf_test tests/test_conf.cpp ${SRC_FILE})
+set_target_properties(conf_test PROPERTIES COMPILE_FLAGS "-pthread" LINK_FLAGS "-pthread")
+target_link_libraries(conf_test yaml-cpp)
 
 # 测试日志模块
 add_executable(log_test tests/test_log.cpp ${SRC_FILE})
