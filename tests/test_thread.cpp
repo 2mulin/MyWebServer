@@ -37,14 +37,18 @@ int main()
     WebServer::Thread t([](){print(1);}, "test_name");
 
     WebServer::ScopedLock<WebServer::Mutex> lk(mtx);
-    std::cout << t.getName() << std::endl;
+    std::cout << "name=" << t.getName() << ",ID=" << t.getID() << std::endl;
     lk.unlock();
 
     lk.lock();
-    std::cout << t.GetName() << std::endl;
+    /// 这里的输出GetName输出的“main”，因为这是非WebServer::thread调用的。
+    std::cout << "name=" << t.GetName() << ",ID=" << t.getID() << std::endl;
     lk.unlock();
 
+    if(t.GetThis() == NULL)
+        std::cout << "GetThis() success!" << std::endl;
 
+    /// 等待所有任务完成，结果
     for(auto& fu : result)
     {
         if(fu.valid())
